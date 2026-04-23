@@ -1,0 +1,117 @@
+# Taller4.0 — Sistema de Inventario (Ductos)
+
+Frontend en React + Backend en Python (FastAPI) conectado a SQL Server (vía ODBC).
+
+## Requisitos
+
+- Windows + SQL Server (local o en red) con los scripts de [DB](./DB) ejecutados
+- ODBC Driver para SQL Server (recomendado: **ODBC Driver 18 for SQL Server**)
+- Node.js + npm
+- Python 3
+
+## Base de Datos (SQL Server)
+
+1) Crea la base de datos (si aplica) y ejecuta los scripts en este orden:
+
+- [DB/Creacion de la base taller.sql](./DB/Creacion%20de%20la%20base%20taller.sql)
+- [DB/seed.sql](./DB/seed.sql)
+- [DB/SP_ARTICULOS.sql](./DB/SP_ARTICULOS.sql)
+
+2) Asegúrate de tener ubicaciones activas como:
+- `STOCK` (Área de Stock)
+- `CONSUMIBLES` (Área de Consumibles)
+- `SUBENSAMBLE` (Área de Subensambles)
+
+## Backend (FastAPI)
+
+### Instalación
+
+Desde la raíz del proyecto:
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install fastapi uvicorn pyodbc pydantic
+```
+
+### Configuración de conexión
+
+El backend se configura por variables de entorno:
+
+- `DB_SERVER` (ej: `.\SQLEXPRESS`, `localhost\SQLEXPRESS`, `192.168.0.10\SQLEXPRESS`)
+- `DB_DATABASE` (por defecto: `InventarioTaller`)
+- `DB_USER` y `DB_PASSWORD` (solo si usas SQL Auth)
+- `DB_CONN_STR` (opcional, string completo de conexión; si lo defines, tiene prioridad)
+
+Ejemplo (Windows Auth):
+
+```powershell
+$env:DB_SERVER=".\SQLEXPRESS"
+$env:DB_DATABASE="InventarioTaller"
+python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Endpoints útiles:
+- Health: http://localhost:8000/health
+- Swagger: http://localhost:8000/docs
+
+## Frontend (React + Vite)
+
+### Instalación
+
+```powershell
+cd frontend
+npm install
+```
+
+### Configuración de API
+
+Por defecto el frontend usa `http://localhost:8000`. Si necesitas otra URL:
+
+```powershell
+$env:VITE_API_URL="http://localhost:8000"
+npm run dev
+```
+
+### Ejecutar
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Abrir: http://localhost:5173
+
+Credenciales:
+- Usuario: `admin`
+- Contraseña: `admin`
+
+## Levantar todo con 1 comando
+
+Desde la raíz:
+
+```powershell
+.\start-dev.ps1
+```
+
+Si tu PowerShell bloquea scripts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-dev.ps1
+```
+
+Nota: si necesitas configurar la BD antes, define `DB_SERVER`/`DB_DATABASE` en la misma terminal antes de ejecutar `start-dev.ps1`.
+
+## Subir a GitHub (repo nuevo)
+
+1) Crea un repositorio vacío en GitHub.
+2) En la raíz del proyecto ejecuta:
+
+```powershell
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
+git push -u origin main
+```
+
