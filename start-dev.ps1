@@ -1,9 +1,6 @@
 param(
-  [string]$DbServer,
-  [string]$DbDatabase,
-  [string]$DbUser,
-  [string]$DbPassword,
-  [string]$DbConnStr,
+  [string]$SupabaseUrl,
+  [string]$SupabaseAnonKey,
   [string]$ApiUrl
 )
 
@@ -13,11 +10,8 @@ $backendDir = Join-Path $root 'backend'
 $frontendDir = Join-Path $root 'frontend'
 
 $envCommands = @()
-if ($DbConnStr) { $envCommands += "`$env:DB_CONN_STR = '$DbConnStr'" }
-if ($DbServer) { $envCommands += "`$env:DB_SERVER = '$DbServer'" }
-if ($DbDatabase) { $envCommands += "`$env:DB_DATABASE = '$DbDatabase'" }
-if ($DbUser) { $envCommands += "`$env:DB_USER = '$DbUser'" }
-if ($DbPassword) { $envCommands += "`$env:DB_PASSWORD = '$DbPassword'" }
+if ($SupabaseUrl) { $envCommands += "`$env:SUPABASE_URL = '$SupabaseUrl'" }
+if ($SupabaseAnonKey) { $envCommands += "`$env:SUPABASE_ANON_KEY = '$SupabaseAnonKey'" }
 if ($ApiUrl) { $envCommands += "`$env:VITE_API_URL = '$ApiUrl'" }
 
 $backendCmd = @()

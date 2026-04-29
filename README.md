@@ -1,26 +1,12 @@
 # Taller4.0 — Sistema de Inventario (Ductos)
 
-Frontend en React + Backend en Python (FastAPI) conectado a SQL Server (vía ODBC) o a Supabase (Postgres) vía RPC.
+Frontend en React + Backend en Python (FastAPI) conectado a Supabase (Postgres) vía RPC.
 
 ## Requisitos
 
-- Windows + SQL Server (local o en red) con los scripts de [DB](./DB) ejecutados
-- ODBC Driver para SQL Server (recomendado: **ODBC Driver 18 for SQL Server**)
+- Proyecto creado en Supabase
 - Node.js + npm
 - Python 3
-
-## Base de Datos (SQL Server)
-
-1) Crea la base de datos (si aplica) y ejecuta los scripts en este orden:
-
-- [DB/Creacion de la base taller.sql](./DB/Creacion%20de%20la%20base%20taller.sql)
-- [DB/seed.sql](./DB/seed.sql)
-- [DB/SP_ARTICULOS.sql](./DB/SP_ARTICULOS.sql)
-
-2) Asegúrate de tener ubicaciones activas como:
-- `STOCK` (Área de Stock)
-- `CONSUMIBLES` (Área de Consumibles)
-- `SUBENSAMBLE` (Área de Subensambles)
 
 ## Base de Datos (Supabase)
 
@@ -43,19 +29,12 @@ Desde la raíz del proyecto:
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install fastapi uvicorn pyodbc pydantic
+python -m pip install fastapi uvicorn pydantic
 ```
 
 ### Configuración de conexión
 
-El backend se configura por variables de entorno:
-
-- `DB_SERVER` (ej: `.\SQLEXPRESS`, `localhost\SQLEXPRESS`, `192.168.0.10\SQLEXPRESS`)
-- `DB_DATABASE` (por defecto: `InventarioTaller`)
-- `DB_USER` y `DB_PASSWORD` (solo si usas SQL Auth)
-- `DB_CONN_STR` (opcional, string completo de conexión; si lo defines, tiene prioridad)
-
-O usando Supabase (si defines `SUPABASE_URL` + `SUPABASE_ANON_KEY`, el backend usará Supabase):
+El backend usa Supabase por variables de entorno:
 
 ```powershell
 $env:SUPABASE_URL="https://TU_PROYECTO.supabase.co"
