@@ -6,6 +6,8 @@ import AppLayout from './layout/AppLayout.jsx'
 import Login from './pages/Login.jsx'
 import CreacionFabricacion from './pages/CreacionFabricacion.jsx'
 import Configuracion from './pages/Configuracion.jsx'
+import Dashboard from './pages/Dashboard.jsx'
+import Analytics from './pages/Analytics.jsx'
 import MateriasPrimas from './pages/MateriasPrimas.jsx'
 import ProductosTerminados from './pages/ProductosTerminados.jsx'
 import Subensambles from './pages/Subensambles.jsx'
@@ -38,7 +40,7 @@ function App() {
             path="dashboard"
             element={
               <RequireRole allow={['admin', 'user']}>
-                <SimplePage title="Dashboard" />
+                <Dashboard />
               </RequireRole>
             }
           />
@@ -46,7 +48,7 @@ function App() {
             path="analytics"
             element={
               <RequireRole allow={['admin', 'user']}>
-                <SimplePage title="Analytics" />
+                <Analytics />
               </RequireRole>
             }
           />

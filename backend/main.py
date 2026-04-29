@@ -243,7 +243,7 @@ def inventory_items(
   kind: str,
   search: str = Query('', max_length=100),
   estatus: str = Query('Todas', max_length=20),
-  limit: int = Query(50, ge=1, le=200),
+  limit: int = Query(50, ge=1, le=1000),
   offset: int = Query(0, ge=0),
   authorization: str | None = Header(default=None),
 ):
@@ -455,6 +455,13 @@ def movimiento_estado(id_producto_terminado: int = Query(..., ge=1), authorizati
     {'id_producto_terminado': id_producto_terminado},
     authorization=authorization,
   )
+
+
+@app.get('/analytics/movimientos/daily')
+def analytics_movimientos_daily(days: int = Query(30, ge=1, le=365), authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc('inv_movements_daily', {'days': days}, authorization=authorization)
 
 
 @app.post('/auth/register')

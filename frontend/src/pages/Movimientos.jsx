@@ -21,11 +21,51 @@ const API_BASE = (() => {
   }
 })()
 const ACCESS_TOKEN_KEY = 'ductos_inventory_supabase_access_token'
+const STORAGE_SESSION = 'ductos_inventory_supabase_session'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 function authHeaders() {
   const token = localStorage.getItem(ACCESS_TOKEN_KEY)
   if (!token) return {}
   return { Authorization: `Bearer ${token}` }
+}
+
+function isExpiredJwtErrorText(text) {
+  const t = String(text || '')
+  return (
+    t.includes('"error_code":"bad_jwt"') &&
+    (t.toLowerCase().includes('expired') || t.toLowerCase().includes('expir'))
+  )
+}
+
+async function refreshAccessTokenFromSession() {
+  const raw = localStorage.getItem(STORAGE_SESSION)
+  const session = raw ? JSON.parse(raw) : null
+  const refresh = session?.refresh_token
+  if (!refresh) return null
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  const res = await fetch(
+    `${String(SUPABASE_URL).replace(/\/+$/, '')}/auth/v1/token?grant_type=refresh_token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify({ refresh_token: refresh }),
+    },
+  )
+  if (!res.ok) return null
+  const data = await res.json()
+  const nextExpiresAt = Date.now() + Number(data.expires_in || 0) * 1000
+  const nextSession = {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    token_type: data.token_type,
+    expires_at: nextExpiresAt,
+    user: data.user || session?.user || null,
+  }
+  localStorage.setItem(STORAGE_SESSION, JSON.stringify(nextSession))
+  localStorage.setItem(ACCESS_TOKEN_KEY, nextSession?.access_token ? String(nextSession.access_token) : '')
+  return String(nextSession.access_token || '')
 }
 
 async function readApiError(res) {
@@ -52,25 +92,50 @@ async function readApiError(res) {
 }
 
 async function fetchJson(path, { signal } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, { signal, headers: authHeaders() })
-  if (!res.ok) throw new Error(await readApiError(res))
-  return res.json()
+  const doFetch = async () => fetch(`${API_BASE}${path}`, { signal, headers: authHeaders() })
+  const res = await doFetch()
+  if (res.ok) return res.json()
+  const text = await res.text().catch(() => '')
+  if ((res.status === 401 || res.status === 403) && isExpiredJwtErrorText(text)) {
+    const nextToken = await refreshAccessTokenFromSession()
+    if (nextToken) {
+      const retry = await doFetch()
+      if (!retry.ok) throw new Error(await readApiError(retry))
+      return retry.json()
+    }
+  }
+  throw new Error(await readApiError(new Response(text, { status: res.status })))
 }
 
 async function fetchApi(path, { method = 'GET', body, signal } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      ...(body ? { 'Content-Type': 'application/json' } : null),
-      ...authHeaders(),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal,
-  })
-  if (!res.ok) throw new Error(await readApiError(res))
-  const contentType = res.headers.get('content-type') || ''
-  if (contentType.includes('application/json')) return res.json()
-  return null
+  const doFetch = async () =>
+    fetch(`${API_BASE}${path}`, {
+      method,
+      headers: {
+        ...(body ? { 'Content-Type': 'application/json' } : null),
+        ...authHeaders(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal,
+    })
+  const res = await doFetch()
+  if (res.ok) {
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) return res.json()
+    return null
+  }
+  const text = await res.text().catch(() => '')
+  if ((res.status === 401 || res.status === 403) && isExpiredJwtErrorText(text)) {
+    const nextToken = await refreshAccessTokenFromSession()
+    if (nextToken) {
+      const retry = await doFetch()
+      if (!retry.ok) throw new Error(await readApiError(retry))
+      const contentType = retry.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) return retry.json()
+      return null
+    }
+  }
+  throw new Error(await readApiError(new Response(text, { status: res.status })))
 }
 
 function asNumber(value, fallback = 0) {

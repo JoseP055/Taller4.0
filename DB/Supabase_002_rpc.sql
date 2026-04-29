@@ -792,6 +792,58 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION inv_movements_daily(
+  days integer DEFAULT 30
+)
+RETURNS jsonb
+LANGUAGE sql
+AS $$
+WITH params AS (
+  SELECT GREATEST(COALESCE(days, 30), 1)::int AS days
+),
+base AS (
+  SELECT
+    date_trunc('day', ms.fecha_hora)::date AS dia,
+    ms.tipo_movimiento,
+    SUM(ms.cantidad)::numeric AS cantidad
+  FROM movimiento_stock ms
+  CROSS JOIN params p
+  WHERE ms.fecha_hora >= (now() - (p.days::text || ' days')::interval)
+  GROUP BY date_trunc('day', ms.fecha_hora)::date, ms.tipo_movimiento
+),
+pivot AS (
+  SELECT
+    b.dia,
+    COALESCE(SUM(CASE WHEN b.tipo_movimiento = 'PT_SALIDA_PROY' THEN b.cantidad END), 0) AS pt_salida_proy,
+    COALESCE(SUM(CASE WHEN b.tipo_movimiento = 'PT_DEVOL_PROY' THEN b.cantidad END), 0) AS pt_devol_proy,
+    COALESCE(SUM(CASE WHEN b.tipo_movimiento = 'FAB_SALIDA' THEN b.cantidad END), 0) AS fab_salida,
+    COALESCE(SUM(CASE WHEN b.tipo_movimiento = 'FAB_ENTRADA' THEN b.cantidad END), 0) AS fab_entrada
+  FROM base b
+  GROUP BY b.dia
+  ORDER BY b.dia DESC
+)
+SELECT jsonb_build_object(
+  'days', (SELECT days FROM params),
+  'rows',
+  COALESCE(
+    (
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'dia', p.dia,
+          'pt_salida_proy', p.pt_salida_proy,
+          'pt_devol_proy', p.pt_devol_proy,
+          'fab_salida', p.fab_salida,
+          'fab_entrada', p.fab_entrada
+        )
+        ORDER BY p.dia ASC
+      )
+      FROM pivot p
+    ),
+    '[]'::jsonb
+  )
+);
+$$;
+
 CREATE OR REPLACE FUNCTION inv_assoc_list()
 RETURNS jsonb
 LANGUAGE sql
@@ -1008,6 +1060,7 @@ GRANT EXECUTE ON FUNCTION inv_update_item(text, integer, text, text, text, numer
 GRANT EXECUTE ON FUNCTION inv_fabricate(integer, integer, numeric, text, text, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_move_pt_project(text, integer, numeric, text, text, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_pt_project_state(integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_movements_daily(integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_list() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_upsert(integer, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_delete(integer) TO anon, authenticated;
