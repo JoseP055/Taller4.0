@@ -44,18 +44,20 @@ if ($resolvedApiUrl) { $envCommands += "`$env:VITE_API_URL = '$resolvedApiUrl'" 
 $backendCmd = @()
 $backendCmd += '& {'
 if ($envCommands.Count) { $backendCmd += ($envCommands -join '; ') + ';' }
-$backendCmd += 'python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload'
+$backendCmd += 'python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload'
 $backendCmd += '}'
 $backendCmdStr = ($backendCmd -join ' ')
 
 $frontendCmd = @()
 $frontendCmd += '& {'
 if ($resolvedApiUrl) { $frontendCmd += "`$env:VITE_API_URL = '$resolvedApiUrl';" }
+$frontendCmd += "if ('$resolvedSupabaseUrl') { `$env:VITE_SUPABASE_URL = '$resolvedSupabaseUrl' };"
+$frontendCmd += "if ('$resolvedSupabaseAnonKey') { `$env:VITE_SUPABASE_ANON_KEY = '$resolvedSupabaseAnonKey' };"
 $frontendCmd += 'npm run dev -- --host 0.0.0.0 --port 5173'
 $frontendCmd += '}'
 $frontendCmdStr = ($frontendCmd -join ' ')
 
-Start-Process -FilePath 'powershell' -WorkingDirectory $root -ArgumentList @(
+Start-Process -FilePath 'powershell' -WorkingDirectory $backendDir -ArgumentList @(
   '-NoExit',
   '-NoProfile',
   '-Command',

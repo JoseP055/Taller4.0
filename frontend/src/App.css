@@ -161,6 +161,11 @@
   color: var(--muted);
 }
 
+.login-card .btn {
+  width: 100%;
+  justify-content: center;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -191,6 +196,41 @@
   background: rgba(220, 38, 38, 0.08);
   color: var(--danger);
   font-size: 14px;
+}
+
+.form-warn {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kv {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kv-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.kv-k {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kv-v {
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .primary {

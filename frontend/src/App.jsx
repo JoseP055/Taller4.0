@@ -3,6 +3,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth.jsx'
 import AppLayout from './layout/AppLayout.jsx'
 import Login from './pages/Login.jsx'
+import CreacionFabricacion from './pages/CreacionFabricacion.jsx'
+import Configuracion from './pages/Configuracion.jsx'
 import MateriasPrimas from './pages/MateriasPrimas.jsx'
 import ProductosTerminados from './pages/ProductosTerminados.jsx'
 import Subensambles from './pages/Subensambles.jsx'
@@ -51,7 +53,7 @@ function App() {
 
           <Route
             path="logistica/creacion-fabricacion"
-            element={<SimplePage title="Creación/Fabricación" />}
+            element={<CreacionFabricacion />}
           />
           <Route
             path="logistica/movimientos"
@@ -60,7 +62,7 @@ function App() {
 
           <Route
             path="configuracion"
-            element={<SimplePage title="Configuración" />}
+            element={<Configuracion />}
           />
         </Route>
       </Route>

@@ -6,7 +6,7 @@ function linkClassName({ isActive }) {
 }
 
 export default function Sidebar() {
-  const { logout } = useAuth()
+  const { logout, role } = useAuth()
   const navigate = useNavigate()
 
   function onLogout() {
@@ -88,9 +88,11 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <NavLink to="/app/configuracion" className={linkClassName}>
-          Configuración
-        </NavLink>
+        {role === 'admin' ? (
+          <NavLink to="/app/configuracion" className={linkClassName}>
+            Configuración
+          </NavLink>
+        ) : null}
         <button className="nav-link danger" type="button" onClick={onLogout}>
           Cerrar sesión
         </button>

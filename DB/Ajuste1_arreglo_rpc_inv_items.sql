@@ -40,6 +40,8 @@ BEGIN
         COALESCE(s.cantidad_actual, 0) AS cantidad,
         a.unidad_medida AS unidad,
         COALESCE(s.minimo, 0) AS min_stock,
+        COALESCE(s.maximo, 0) AS max_stock,
+        COALESCE(s.punto_reorden, 0) AS punto_reorden,
         u.codigo_ubicacion AS ubicacion,
         CASE
           WHEN COALESCE(s.cantidad_actual, 0) < COALESCE(s.minimo, 0) THEN 'Alerta'
@@ -76,4 +78,3 @@ $$;
 GRANT EXECUTE ON FUNCTION inv_items(text, text, text, integer, integer) TO anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';
-

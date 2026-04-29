@@ -1,10 +1,11 @@
 import os
 import json
+from datetime import datetime, timezone
 from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -77,6 +78,24 @@ def _supabase_anon_key() -> str | None:
   return None
 
 
+def _allowed_email_domains() -> list[str]:
+  raw = os.environ.get('ALLOWED_EMAIL_DOMAINS') or os.environ.get('APP_ALLOWED_EMAIL_DOMAINS')
+  if raw and raw.strip():
+    parts = [p.strip().lower() for p in raw.split(',')]
+    return [p for p in parts if p]
+  return ['climatisacr.com']
+
+
+def _is_allowed_email(email: str | None) -> bool:
+  if not email:
+    return False
+  e = email.strip().lower()
+  if '@' not in e:
+    return False
+  domain = e.split('@', 1)[1]
+  return domain in _allowed_email_domains()
+
+
 def _require_supabase():
   base = _supabase_url()
   key = _supabase_anon_key()
@@ -88,7 +107,25 @@ def _require_supabase():
   return base, key
 
 
-def _supabase_rpc(function_name: str, payload: dict):
+def _require_bearer(authorization: str | None) -> str:
+  if not authorization or not authorization.strip():
+    raise HTTPException(status_code=401, detail='No autenticado')
+  if not authorization.lower().startswith('bearer '):
+    raise HTTPException(status_code=401, detail='Token inválido')
+  return authorization.strip()
+
+
+def _supabase_headers(authorization: str | None = None) -> dict[str, str]:
+  _, key = _require_supabase()
+  headers = {'Content-Type': 'application/json', 'apikey': key}
+  if authorization and authorization.strip():
+    headers['Authorization'] = authorization.strip()
+  else:
+    headers['Authorization'] = f'Bearer {key}'
+  return headers
+
+
+def _supabase_rpc(function_name: str, payload: dict, authorization: str | None = None):
   base, key = _require_supabase()
 
   url = f'{base}/rest/v1/rpc/{function_name}'
@@ -97,11 +134,7 @@ def _supabase_rpc(function_name: str, payload: dict):
     url,
     data=body,
     method='POST',
-    headers={
-      'Content-Type': 'application/json',
-      'apikey': key,
-      'Authorization': f'Bearer {key}',
-    },
+    headers=_supabase_headers(authorization),
   )
 
   try:
@@ -116,6 +149,55 @@ def _supabase_rpc(function_name: str, payload: dict):
     raise HTTPException(status_code=int(getattr(e, 'code', 500) or 500), detail=detail) from e
   except URLError as e:
     raise HTTPException(status_code=500, detail=f'Error de red Supabase: {e}') from e
+
+
+def _supabase_get_user(authorization: str) -> dict:
+  base, _ = _require_supabase()
+  url = f'{base}/auth/v1/user'
+  req = Request(url, method='GET', headers=_supabase_headers(authorization))
+  try:
+    with urlopen(req, timeout=20) as res:
+      raw = res.read().decode('utf-8') if res else ''
+      return json.loads(raw or '{}')
+  except HTTPError as e:
+    raw = e.read().decode('utf-8') if hasattr(e, 'read') else ''
+    detail = raw or str(e)
+    raise HTTPException(status_code=int(getattr(e, 'code', 500) or 500), detail=detail) from e
+
+
+def _supabase_select_app_user(authorization: str, user_id: str):
+  base, _ = _require_supabase()
+  url = f'{base}/rest/v1/app_user?select=user_id,email,role,active&user_id=eq.{user_id}&limit=1'
+  req = Request(url, method='GET', headers=_supabase_headers(authorization))
+  with urlopen(req, timeout=20) as res:
+    raw = res.read().decode('utf-8') if res else ''
+    rows = json.loads(raw or '[]')
+    return rows[0] if isinstance(rows, list) and rows else None
+
+
+def _require_app_access(authorization: str | None) -> dict:
+  bearer = _require_bearer(authorization)
+  user = _supabase_get_user(bearer)
+  user_id = user.get('id') or user.get('user', {}).get('id')
+  email = user.get('email') or user.get('user', {}).get('email')
+  if not user_id:
+    raise HTTPException(status_code=401, detail='No autenticado')
+  if not _is_allowed_email(email):
+    raise HTTPException(status_code=403, detail='Correo no permitido')
+  try:
+    app_user = _supabase_select_app_user(bearer, user_id)
+  except HTTPError:
+    raise HTTPException(status_code=403, detail='Usuario no autorizado')
+  if not app_user or not app_user.get('active'):
+    raise HTTPException(status_code=403, detail='Usuario pendiente de aprobación')
+  return {'user_id': user_id, 'email': email, 'role': app_user.get('role') or 'user'}
+
+
+def _require_admin(authorization: str | None) -> dict:
+  ctx = _require_app_access(authorization)
+  if ctx.get('role') != 'admin':
+    raise HTTPException(status_code=403, detail='No autorizado')
+  return ctx
 
 
 app = FastAPI(title='InventarioTaller API')
@@ -139,12 +221,13 @@ def health():
 
 
 @app.get('/inventario/{kind}/summary')
-def inventory_summary(kind: str):
+def inventory_summary(kind: str, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
   cache_key = f'summary:{kind}'
   cached, ok = _cache_get(cache_key)
   if ok:
     return cached
-  data = _supabase_rpc('inv_summary', {'kind': kind})
+  data = _supabase_rpc('inv_summary', {'kind': kind}, authorization=authorization)
   _cache_set(cache_key, data, ttl_seconds=1.5)
   return data
 
@@ -156,7 +239,9 @@ def inventory_items(
   estatus: str = Query('Todas', max_length=20),
   limit: int = Query(50, ge=1, le=200),
   offset: int = Query(0, ge=0),
+  authorization: str | None = Header(default=None),
 ):
+  _require_app_access(authorization)
   return _supabase_rpc(
     'inv_items',
     {
@@ -166,16 +251,18 @@ def inventory_items(
       'lim': limit,
       'off': offset,
     },
+    authorization=authorization,
   )
 
 
 @app.get('/inventario/{kind}/meta')
-def inventory_meta(kind: str):
+def inventory_meta(kind: str, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
   cache_key = f'meta:{kind}'
   cached, ok = _cache_get(cache_key)
   if ok:
     return cached
-  data = _supabase_rpc('inv_meta', {'kind': kind})
+  data = _supabase_rpc('inv_meta', {'kind': kind}, authorization=authorization)
   _cache_set(cache_key, data, ttl_seconds=300)
   return data
 
@@ -203,17 +290,31 @@ class UpdateInventoryItem(BaseModel):
   detalle_adicional: str | None = Field(default=None, max_length=255)
   unidad_medida: str | None = Field(default=None, min_length=1, max_length=20)
 
+class FabricacionPayload(BaseModel):
+  id_subensamble: int = Field(..., ge=1)
+  id_producto_terminado: int = Field(..., ge=1)
+  cantidad: float = Field(..., gt=0)
+  referencia: str | None = Field(default=None, max_length=100)
+  observaciones: str | None = Field(default=None, max_length=255)
+
+class AsociacionPayload(BaseModel):
+  id_subensamble: int = Field(..., ge=1)
+  id_producto_terminado: int = Field(..., ge=1)
+
 @app.get('/inventario/{kind}/next-codigo')
-def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1)):
+def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1), authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
   codigo_articulo = _supabase_rpc(
     'inv_next_codigo',
     {'kind': kind, 'id_subcategoria': id_subcategoria},
+    authorization=authorization,
   )
   return {'codigo_articulo': codigo_articulo}
 
 
 @app.post('/inventario/{kind}/items')
-def create_inventory_item(kind: str, payload: CreateInventoryItem):
+def create_inventory_item(kind: str, payload: CreateInventoryItem, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
   res = _supabase_rpc(
     'inv_create_item',
     {
@@ -230,13 +331,15 @@ def create_inventory_item(kind: str, payload: CreateInventoryItem):
       'maximo': payload.maximo,
       'punto_reorden': payload.punto_reorden,
     },
+    authorization=authorization,
   )
   _cache_invalidate_prefix(f'summary:{kind}')
   return res
 
 
 @app.patch('/inventario/{kind}/items/{id_articulo}')
-def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryItem):
+def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryItem, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
   res = _supabase_rpc(
     'inv_update_item',
     {
@@ -246,6 +349,155 @@ def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryI
       'unidad_medida': payload.unidad_medida,
       'dimension_principal': payload.dimension_principal,
     },
+    authorization=authorization,
   )
   _cache_invalidate_prefix(f'summary:{kind}')
   return res
+
+
+@app.post('/logistica/fabricacion')
+def crear_fabricacion(payload: FabricacionPayload, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  res = _supabase_rpc(
+    'inv_fabricate',
+    {
+      'id_subensamble': payload.id_subensamble,
+      'id_producto_terminado': payload.id_producto_terminado,
+      'cantidad': payload.cantidad,
+      'referencia': payload.referencia or 'FABRICACION',
+      'observaciones': payload.observaciones,
+      'id_usuario': None,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('summary:subensambles')
+  _cache_invalidate_prefix('summary:productos-terminados')
+  return res
+
+
+@app.get('/logistica/asociaciones')
+def listar_asociaciones(authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  return _supabase_rpc('inv_assoc_list', {}, authorization=authorization)
+
+
+@app.post('/logistica/asociaciones')
+def upsert_asociacion(payload: AsociacionPayload, authorization: str | None = Header(default=None)):
+  _require_admin(authorization)
+  return _supabase_rpc(
+    'inv_assoc_upsert',
+    {
+      'id_subensamble': payload.id_subensamble,
+      'id_producto_terminado': payload.id_producto_terminado,
+    },
+    authorization=authorization,
+  )
+
+
+@app.delete('/logistica/asociaciones/{id_subensamble}')
+def borrar_asociacion(id_subensamble: int, authorization: str | None = Header(default=None)):
+  _require_admin(authorization)
+  return _supabase_rpc('inv_assoc_delete', {'id_subensamble': id_subensamble}, authorization=authorization)
+
+
+@app.post('/auth/register')
+def auth_register(authorization: str | None = Header(default=None)):
+  bearer = _require_bearer(authorization)
+  user = _supabase_get_user(bearer)
+  user_id = user.get('id') or user.get('user', {}).get('id')
+  email = user.get('email') or user.get('user', {}).get('email')
+  if not user_id:
+    raise HTTPException(status_code=401, detail='No autenticado')
+  if not _is_allowed_email(email):
+    raise HTTPException(status_code=403, detail='Correo no permitido')
+
+  base, _ = _require_supabase()
+  url = f'{base}/rest/v1/app_user'
+  body = json.dumps(
+    {'user_id': user_id, 'email': email, 'role': 'user', 'active': False},
+  ).encode('utf-8')
+  req = Request(
+    url,
+    method='POST',
+    data=body,
+    headers={**_supabase_headers(bearer), 'Prefer': 'return=minimal'},
+  )
+  try:
+    with urlopen(req, timeout=20):
+      pass
+  except HTTPError as e:
+    if int(getattr(e, 'code', 500) or 500) not in (409, 400):
+      raw = e.read().decode('utf-8') if hasattr(e, 'read') else ''
+      raise HTTPException(status_code=500, detail=raw or str(e)) from e
+  return {'ok': True}
+
+
+@app.get('/auth/me')
+def auth_me(authorization: str | None = Header(default=None)):
+  bearer = _require_bearer(authorization)
+  user = _supabase_get_user(bearer)
+  user_id = user.get('id') or user.get('user', {}).get('id')
+  email = user.get('email') or user.get('user', {}).get('email')
+  if not user_id:
+    raise HTTPException(status_code=401, detail='No autenticado')
+  app_user = _supabase_select_app_user(bearer, user_id)
+  return {'user': {'id': user_id, 'email': email}, 'app_user': app_user}
+
+
+class AdminUpdateUserPayload(BaseModel):
+  role: str | None = Field(default=None, max_length=20)
+  active: bool | None = None
+
+
+@app.get('/admin/app-users')
+def admin_list_app_users(authorization: str | None = Header(default=None)):
+  bearer = _require_bearer(authorization)
+  _require_admin(authorization)
+  base, _ = _require_supabase()
+  url = f'{base}/rest/v1/app_user?select=user_id,email,role,active,created_at,updated_at&order=created_at.desc'
+  req = Request(url, method='GET', headers=_supabase_headers(bearer))
+  with urlopen(req, timeout=20) as res:
+    raw = res.read().decode('utf-8') if res else ''
+    return {'users': json.loads(raw or '[]')}
+
+
+@app.patch('/admin/app-users/{user_id}')
+def admin_update_app_user(user_id: str, payload: AdminUpdateUserPayload, authorization: str | None = Header(default=None)):
+  bearer = _require_bearer(authorization)
+  _require_admin(authorization)
+  patch = {}
+  if payload.role is not None:
+    patch['role'] = payload.role
+  if payload.active is not None:
+    patch['active'] = payload.active
+  if not patch:
+    return {'ok': True}
+  patch['updated_at'] = datetime.now(timezone.utc).isoformat()
+
+  base, _ = _require_supabase()
+  url = f'{base}/rest/v1/app_user?user_id=eq.{user_id}'
+  body = json.dumps(patch).encode('utf-8')
+  req = Request(
+    url,
+    method='PATCH',
+    data=body,
+    headers={**_supabase_headers(bearer), 'Prefer': 'return=representation'},
+  )
+  with urlopen(req, timeout=20) as res:
+    raw = res.read().decode('utf-8') if res else ''
+    return {'ok': True, 'rows': json.loads(raw or '[]')}
+
+
+@app.delete('/admin/app-users/{user_id}')
+def admin_delete_app_user(user_id: str, authorization: str | None = Header(default=None)):
+  bearer = _require_bearer(authorization)
+  _require_admin(authorization)
+  base, _ = _require_supabase()
+  url = f'{base}/rest/v1/app_user?user_id=eq.{user_id}'
+  req = Request(
+    url,
+    method='DELETE',
+    headers={**_supabase_headers(bearer), 'Prefer': 'return=minimal'},
+  )
+  with urlopen(req, timeout=20):
+    return {'ok': True}

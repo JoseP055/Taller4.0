@@ -167,6 +167,8 @@ BEGIN
         COALESCE(s.cantidad_actual, 0) AS cantidad,
         a.unidad_medida AS unidad,
         COALESCE(s.minimo, 0) AS min_stock,
+        COALESCE(s.maximo, 0) AS max_stock,
+        COALESCE(s.punto_reorden, 0) AS punto_reorden,
         u.codigo_ubicacion AS ubicacion,
         CASE
           WHEN COALESCE(s.cantidad_actual, 0) < COALESCE(s.minimo, 0) THEN 'Alerta'
@@ -386,6 +388,8 @@ BEGIN
       COALESCE(s.cantidad_actual, 0) AS cantidad,
       a.unidad_medida AS unidad,
       COALESCE(s.minimo, 0) AS min_stock,
+      COALESCE(s.maximo, 0) AS max_stock,
+      COALESCE(s.punto_reorden, 0) AS punto_reorden,
       u.codigo_ubicacion AS ubicacion,
       CASE
         WHEN COALESCE(s.cantidad_actual, 0) < COALESCE(s.minimo, 0) THEN 'Alerta'
@@ -400,6 +404,269 @@ BEGIN
   ) r;
 
   RETURN jsonb_build_object('item', item);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION inv_fabricate(
+  id_subensamble integer,
+  id_producto_terminado integer,
+  cantidad numeric,
+  referencia text DEFAULT 'FABRICACION',
+  observaciones text DEFAULT NULL,
+  id_usuario integer DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  qty numeric;
+  sub_cat_id integer;
+  pt_cat_id integer;
+  assoc_pt_id integer;
+  sub_loc_id integer;
+  pt_loc_id integer;
+  sub_before numeric;
+  sub_after numeric;
+  pt_before numeric;
+  pt_after numeric;
+  sub_min numeric;
+  sub_max numeric;
+  pt_min numeric;
+  pt_max numeric;
+BEGIN
+  qty := COALESCE(cantidad, 0);
+  IF qty <= 0 THEN
+    RAISE EXCEPTION 'Cantidad inválida';
+  END IF;
+
+  SELECT id_categoria INTO sub_cat_id FROM categoria WHERE codigo_categoria = '30' AND activo = true;
+  SELECT id_categoria INTO pt_cat_id FROM categoria WHERE codigo_categoria = '40' AND activo = true;
+  IF sub_cat_id IS NULL OR pt_cat_id IS NULL THEN
+    RAISE EXCEPTION 'Categorías no configuradas';
+  END IF;
+
+  PERFORM 1 FROM articulo a WHERE a.id_articulo = inv_fabricate.id_subensamble AND a.id_categoria = sub_cat_id AND a.activo = true;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Subensamble inválido';
+  END IF;
+
+  PERFORM 1 FROM articulo a WHERE a.id_articulo = inv_fabricate.id_producto_terminado AND a.id_categoria = pt_cat_id AND a.activo = true;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Producto terminado inválido';
+  END IF;
+
+  SELECT fa.id_producto_terminado
+  INTO assoc_pt_id
+  FROM fabricacion_asociacion fa
+  WHERE fa.id_subensamble = inv_fabricate.id_subensamble
+    AND fa.activa = true;
+
+  IF assoc_pt_id IS NULL THEN
+    RAISE EXCEPTION 'No hay asociación configurada para este subensamble';
+  END IF;
+
+  IF assoc_pt_id <> inv_fabricate.id_producto_terminado THEN
+    RAISE EXCEPTION 'Producto terminado no corresponde a la asociación configurada';
+  END IF;
+
+  SELECT id_ubicacion INTO sub_loc_id FROM ubicacion WHERE codigo_ubicacion = 'SUBENSAMBLE' AND activa = true;
+  SELECT id_ubicacion INTO pt_loc_id FROM ubicacion WHERE codigo_ubicacion = 'STOCK' AND activa = true;
+  IF sub_loc_id IS NULL OR pt_loc_id IS NULL THEN
+    RAISE EXCEPTION 'Ubicaciones no configuradas';
+  END IF;
+
+  INSERT INTO stock (id_articulo, id_ubicacion, cantidad_actual, minimo, maximo, punto_reorden)
+  VALUES (inv_fabricate.id_subensamble, sub_loc_id, 0, 0, 0, 0)
+  ON CONFLICT (id_articulo, id_ubicacion) DO NOTHING;
+
+  INSERT INTO stock (id_articulo, id_ubicacion, cantidad_actual, minimo, maximo, punto_reorden)
+  VALUES (inv_fabricate.id_producto_terminado, pt_loc_id, 0, 0, 0, 0)
+  ON CONFLICT (id_articulo, id_ubicacion) DO NOTHING;
+
+  SELECT
+    COALESCE(s.cantidad_actual, 0),
+    COALESCE(s.minimo, 0),
+    COALESCE(s.maximo, 0)
+  INTO sub_before, sub_min, sub_max
+  FROM stock s
+  WHERE s.id_articulo = inv_fabricate.id_subensamble AND s.id_ubicacion = sub_loc_id
+  FOR UPDATE;
+
+  SELECT
+    COALESCE(s.cantidad_actual, 0),
+    COALESCE(s.minimo, 0),
+    COALESCE(s.maximo, 0)
+  INTO pt_before, pt_min, pt_max
+  FROM stock s
+  WHERE s.id_articulo = inv_fabricate.id_producto_terminado AND s.id_ubicacion = pt_loc_id
+  FOR UPDATE;
+
+  IF sub_before < qty THEN
+    RAISE EXCEPTION 'No hay suficiente cantidad de subensamble (disponible: %, requerido: %)', sub_before, qty;
+  END IF;
+
+  sub_after := sub_before - qty;
+  pt_after := pt_before + qty;
+
+  UPDATE stock
+  SET cantidad_actual = sub_after,
+      fecha_ultima_actualizacion = now()
+  WHERE id_articulo = inv_fabricate.id_subensamble AND id_ubicacion = sub_loc_id;
+
+  UPDATE stock
+  SET cantidad_actual = pt_after,
+      fecha_ultima_actualizacion = now()
+  WHERE id_articulo = inv_fabricate.id_producto_terminado AND id_ubicacion = pt_loc_id;
+
+  INSERT INTO movimiento_stock (
+    tipo_movimiento,
+    id_articulo,
+    id_ubicacion_origen,
+    id_ubicacion_destino,
+    cantidad,
+    referencia,
+    id_usuario,
+    observaciones
+  )
+  VALUES (
+    'FAB_SALIDA',
+    inv_fabricate.id_subensamble,
+    sub_loc_id,
+    pt_loc_id,
+    qty,
+    NULLIF(BTRIM(inv_fabricate.referencia), ''),
+    inv_fabricate.id_usuario,
+    NULLIF(BTRIM(inv_fabricate.observaciones), '')
+  );
+
+  INSERT INTO movimiento_stock (
+    tipo_movimiento,
+    id_articulo,
+    id_ubicacion_origen,
+    id_ubicacion_destino,
+    cantidad,
+    referencia,
+    id_usuario,
+    observaciones
+  )
+  VALUES (
+    'FAB_ENTRADA',
+    inv_fabricate.id_producto_terminado,
+    sub_loc_id,
+    pt_loc_id,
+    qty,
+    NULLIF(BTRIM(inv_fabricate.referencia), ''),
+    inv_fabricate.id_usuario,
+    NULLIF(BTRIM(inv_fabricate.observaciones), '')
+  );
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'cantidad', qty,
+    'subensamble', jsonb_build_object(
+      'id_articulo', inv_fabricate.id_subensamble,
+      'ubicacion', 'SUBENSAMBLE',
+      'antes', sub_before,
+      'despues', sub_after,
+      'minimo', sub_min,
+      'maximo', sub_max,
+      'bajo_minimo', (sub_after < sub_min)
+    ),
+    'producto_terminado', jsonb_build_object(
+      'id_articulo', inv_fabricate.id_producto_terminado,
+      'ubicacion', 'STOCK',
+      'antes', pt_before,
+      'despues', pt_after,
+      'minimo', pt_min,
+      'maximo', pt_max,
+      'sobre_maximo', (pt_max > 0 AND pt_after > pt_max),
+      'bajo_minimo', (pt_after < pt_min)
+    )
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION inv_assoc_list()
+RETURNS jsonb
+LANGUAGE sql
+AS $$
+SELECT jsonb_build_object(
+  'asociaciones',
+  COALESCE(
+    (
+      SELECT jsonb_agg(to_jsonb(r) ORDER BY r.sub_codigo)
+      FROM (
+        SELECT
+          fa.id_asociacion AS id,
+          fa.id_subensamble AS id_subensamble,
+          fa.id_producto_terminado AS id_producto_terminado,
+          s.codigo_articulo AS sub_codigo,
+          s.nombre_base AS sub_nombre,
+          s.dimension_principal AS sub_medida,
+          p.codigo_articulo AS pt_codigo,
+          p.nombre_base AS pt_nombre,
+          p.dimension_principal AS pt_medida,
+          fa.fecha_creacion AS fecha_creacion
+        FROM fabricacion_asociacion fa
+        JOIN articulo s ON s.id_articulo = fa.id_subensamble AND s.activo = true
+        JOIN articulo p ON p.id_articulo = fa.id_producto_terminado AND p.activo = true
+        JOIN categoria cs ON cs.id_categoria = s.id_categoria AND cs.codigo_categoria = '30' AND cs.activo = true
+        JOIN categoria cp ON cp.id_categoria = p.id_categoria AND cp.codigo_categoria = '40' AND cp.activo = true
+        WHERE fa.activa = true
+      ) r
+    ),
+    '[]'::jsonb
+  )
+);
+$$;
+
+CREATE OR REPLACE FUNCTION inv_assoc_upsert(
+  id_subensamble integer,
+  id_producto_terminado integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  sub_cat_id integer;
+  pt_cat_id integer;
+BEGIN
+  SELECT id_categoria INTO sub_cat_id FROM categoria WHERE codigo_categoria = '30' AND activo = true;
+  SELECT id_categoria INTO pt_cat_id FROM categoria WHERE codigo_categoria = '40' AND activo = true;
+  IF sub_cat_id IS NULL OR pt_cat_id IS NULL THEN
+    RAISE EXCEPTION 'Categorías no configuradas';
+  END IF;
+
+  PERFORM 1 FROM articulo a WHERE a.id_articulo = inv_assoc_upsert.id_subensamble AND a.id_categoria = sub_cat_id AND a.activo = true;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Subensamble inválido';
+  END IF;
+
+  PERFORM 1 FROM articulo a WHERE a.id_articulo = inv_assoc_upsert.id_producto_terminado AND a.id_categoria = pt_cat_id AND a.activo = true;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Producto terminado inválido';
+  END IF;
+
+  INSERT INTO fabricacion_asociacion (id_subensamble, id_producto_terminado, activa)
+  VALUES (inv_assoc_upsert.id_subensamble, inv_assoc_upsert.id_producto_terminado, true)
+  ON CONFLICT ON CONSTRAINT uq_fabricacion_asociacion_sub DO UPDATE SET
+    id_producto_terminado = EXCLUDED.id_producto_terminado,
+    activa = true;
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION inv_assoc_delete(id_subensamble integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE fabricacion_asociacion
+  SET activa = false
+  WHERE fabricacion_asociacion.id_subensamble = inv_assoc_delete.id_subensamble;
+
+  RETURN jsonb_build_object('ok', true);
 END;
 $$;
 
@@ -453,3 +720,11 @@ GRANT EXECUTE ON FUNCTION inv_items(text, text, text, integer, integer) TO anon,
 GRANT EXECUTE ON FUNCTION inv_next_codigo(text, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_create_item(text, bigint, integer, text, text, text, text, text, numeric, numeric, numeric, numeric) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_update_item(text, integer, text, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_fabricate(integer, integer, numeric, text, text, integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_assoc_list() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_assoc_upsert(integer, integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_assoc_delete(integer) TO anon, authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE fabricacion_asociacion TO anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';

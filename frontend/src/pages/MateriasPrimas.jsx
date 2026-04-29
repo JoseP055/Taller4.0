@@ -5,6 +5,13 @@ const API_BASE =
   import.meta.env.VITE_API_URL || `http://${globalThis.location?.hostname || 'localhost'}:8000`
 const KIND = 'materias-primas'
 const FIXED_LOCATION_CODE = 'CONSUMIBLES'
+const ACCESS_TOKEN_KEY = 'ductos_inventory_supabase_access_token'
+
+function authHeaders() {
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+  if (!token) return {}
+  return { Authorization: `Bearer ${token}` }
+}
 
 function formatDate(date) {
   return date.toLocaleDateString('es-ES', {
@@ -54,7 +61,7 @@ async function readApiError(res) {
 }
 
 async function fetchJson(path, { signal } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, { signal })
+  const res = await fetch(`${API_BASE}${path}`, { signal, headers: authHeaders() })
   if (!res.ok) {
     throw new Error(await readApiError(res))
   }
@@ -64,7 +71,10 @@ async function fetchJson(path, { signal } = {}) {
 async function fetchApi(path, { method = 'GET', body, signal } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : null),
+      ...authHeaders(),
+    },
     body: body ? JSON.stringify(body) : undefined,
     signal,
   })
