@@ -736,6 +736,10 @@ function EditItemModal({ item, onClose, onSave }) {
     unidad_medida: item?.unidad || 'UND',
     dimension_value: parsedMedida.value || '',
     dimension_unit: parsedMedida.unit || '',
+    cantidad_actual: String(item?.cantidad ?? 0),
+    minimo: String(item?.minStock ?? 0),
+    maximo: String(item?.maxStock ?? 0),
+    punto_reorden: String(item?.puntoReorden ?? 0),
   }))
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -779,10 +783,42 @@ function EditItemModal({ item, onClose, onSave }) {
     const dimension_principal =
       dimensionValue && dimensionUnit ? `${dimensionValue} ${dimensionUnit}`.toUpperCase() : null
 
+    const cantidad_actual = Number(String(value.cantidad_actual).trim())
+    if (!Number.isFinite(cantidad_actual) || cantidad_actual < 0) {
+      setError('Cantidad inválida.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const minimo = Number(String(value.minimo).trim())
+    if (!Number.isFinite(minimo) || minimo < 0) {
+      setError('Mínimo inválido.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const maximo = Number(String(value.maximo).trim())
+    if (!Number.isFinite(maximo) || maximo < 0) {
+      setError('Máximo inválido.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const punto_reorden = Number(String(value.punto_reorden).trim())
+    if (!Number.isFinite(punto_reorden) || punto_reorden < 0) {
+      setError('Punto reorden inválido.')
+      setIsSubmitting(false)
+      return
+    }
+
     onSave({
       nombre_base,
       unidad_medida,
       dimension_principal,
+      cantidad_actual,
+      minimo,
+      maximo,
+      punto_reorden,
     })
       .catch((e2) => setError(e2?.message || 'No se pudo guardar'))
       .finally(() => setIsSubmitting(false))
@@ -840,6 +876,46 @@ function EditItemModal({ item, onClose, onSave }) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="field">
+              <span>Cantidad actual</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.cantidad_actual}
+                onChange={update('cantidad_actual')}
+              />
+            </label>
+            <label className="field">
+              <span>Mín. Stock</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.minimo}
+                onChange={update('minimo')}
+              />
+            </label>
+            <label className="field">
+              <span>Máx. Stock</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.maximo}
+                onChange={update('maximo')}
+              />
+            </label>
+            <label className="field">
+              <span>Punto reorden</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.punto_reorden}
+                onChange={update('punto_reorden')}
+              />
             </label>
           </div>
           {error ? <div className="form-error">{error}</div> : null}
@@ -926,6 +1002,8 @@ export default function MateriasPrimas() {
                 cantidad: Number(x.cantidad ?? 0),
                 unidad: x.unidad ?? '',
                 minStock: Number(x.min_stock ?? 0),
+                maxStock: Number(x.max_stock ?? 0),
+                puntoReorden: Number(x.punto_reorden ?? 0),
                 ubicacion: x.ubicacion ?? '',
                 estado: x.estatus ?? 'Disponible',
               }))

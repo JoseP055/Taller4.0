@@ -1,6 +1,7 @@
 import './App.css'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth.jsx'
+import { useAuth } from './auth/AuthContext.jsx'
 import AppLayout from './layout/AppLayout.jsx'
 import Login from './pages/Login.jsx'
 import CreacionFabricacion from './pages/CreacionFabricacion.jsx'
@@ -8,7 +9,22 @@ import Configuracion from './pages/Configuracion.jsx'
 import MateriasPrimas from './pages/MateriasPrimas.jsx'
 import ProductosTerminados from './pages/ProductosTerminados.jsx'
 import Subensambles from './pages/Subensambles.jsx'
+import Movimientos from './pages/Movimientos.jsx'
 import SimplePage from './pages/SimplePage.jsx'
+
+function IndexRedirect() {
+  const { role } = useAuth()
+  if (role === 'zebra') return <Navigate to="logistica/creacion-fabricacion" replace />
+  return <Navigate to="dashboard" replace />
+}
+
+function RequireRole({ allow, children }) {
+  const { role } = useAuth()
+  const ok = Array.isArray(allow) ? allow.includes(role) : false
+  if (ok) return children
+  if (role === 'zebra') return <Navigate to="/app/logistica/creacion-fabricacion" replace />
+  return <Navigate to="/app/dashboard" replace />
+}
 
 function App() {
   return (
@@ -17,38 +33,80 @@ function App() {
 
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AppLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<SimplePage title="Dashboard" />} />
-          <Route path="analytics" element={<SimplePage title="Analytics" />} />
+          <Route index element={<IndexRedirect />} />
+          <Route
+            path="dashboard"
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <SimplePage title="Dashboard" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="analytics"
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <SimplePage title="Analytics" />
+              </RequireRole>
+            }
+          />
 
           <Route
             path="inventario/materias-primas"
-            element={<MateriasPrimas />}
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <MateriasPrimas />
+              </RequireRole>
+            }
           />
           <Route
             path="inventario/subensambles"
-            element={<Subensambles />}
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <Subensambles />
+              </RequireRole>
+            }
           />
           <Route
             path="inventario/productos-terminados"
-            element={<ProductosTerminados />}
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <ProductosTerminados />
+              </RequireRole>
+            }
           />
           <Route
             path="inventario/bobinas-de-lamina"
-            element={<SimplePage title="Bobinas de lámina" />}
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <SimplePage title="Bobinas de lámina" />
+              </RequireRole>
+            }
           />
 
           <Route
             path="recursos/herramientas"
-            element={<SimplePage title="Herramientas" />}
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <SimplePage title="Herramientas" />
+              </RequireRole>
+            }
           />
           <Route
             path="recursos/suministros"
-            element={<SimplePage title="Suministros" />}
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <SimplePage title="Suministros" />
+              </RequireRole>
+            }
           />
           <Route
             path="recursos/maquinaria"
-            element={<SimplePage title="Maquinaria" />}
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <SimplePage title="Maquinaria" />
+              </RequireRole>
+            }
           />
 
           <Route
@@ -57,12 +115,16 @@ function App() {
           />
           <Route
             path="logistica/movimientos"
-            element={<SimplePage title="Movimientos" />}
+            element={<Movimientos />}
           />
 
           <Route
             path="configuracion"
-            element={<Configuracion />}
+            element={
+              <RequireRole allow={['admin']}>
+                <Configuracion />
+              </RequireRole>
+            }
           />
         </Route>
       </Route>

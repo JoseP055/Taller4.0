@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
 
@@ -24,12 +25,25 @@ function resolveTitle(pathname) {
 export default function AppLayout() {
   const location = useLocation()
   const title = resolveTitle(location.pathname)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    setIsSidebarOpen(false)
+  }, [location.pathname])
 
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <div className="app-main">
         <div className="topbar">
+          <button
+            type="button"
+            className="topbar-menu-btn"
+            onClick={() => setIsSidebarOpen(true)}
+            aria-label="Abrir menú"
+          >
+            ☰
+          </button>
           <div className="topbar-title">{title}</div>
         </div>
         <div className="app-content">

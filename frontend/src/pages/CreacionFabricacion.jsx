@@ -160,8 +160,25 @@ function ItemPicker({
   disabled,
   emptyText,
   showQty = true,
+  pageSize = 5,
+  resetKey = '',
 }) {
   const rows = Array.isArray(items) ? items : []
+  const size = Math.max(Number(pageSize) || 5, 1)
+  const total = rows.length
+  const totalPages = Math.max(Math.ceil(total / size), 1)
+  const [page, setPage] = useState(0)
+
+  useEffect(() => {
+    setPage(0)
+  }, [resetKey])
+
+  useEffect(() => {
+    if (page > totalPages - 1) setPage(Math.max(totalPages - 1, 0))
+  }, [page, totalPages])
+
+  const start = page * size
+  const pageRows = rows.slice(start, start + size)
   return (
     <div
       style={{
@@ -171,9 +188,9 @@ function ItemPicker({
         background: '#fff',
       }}
     >
-      <div style={{ maxHeight: 280, overflow: 'auto' }}>
-        {rows.length ? (
-          rows.map((x) => {
+      <div>
+        {pageRows.length ? (
+          pageRows.map((x) => {
             const isSelected = String(selectedId || '') === String(x.id)
             return (
               <div
@@ -226,6 +243,38 @@ function ItemPicker({
           </div>
         )}
       </div>
+      {rows.length > size ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            padding: 10,
+            borderTop: '1px solid rgba(0,0,0,0.06)',
+          }}
+        >
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setPage((p) => Math.max(p - 1, 0))}
+            disabled={disabled || page <= 0}
+          >
+            Anterior
+          </button>
+          <div className="muted" style={{ fontSize: 12 }}>
+            Página {page + 1} de {totalPages}
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))}
+            disabled={disabled || page >= totalPages - 1}
+          >
+            Siguiente
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -233,6 +282,7 @@ function ItemPicker({
 export default function CreacionFabricacion() {
   const { role } = useAuth()
   const isAdmin = role === 'admin'
+  const isZebra = role === 'zebra'
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [subensambles, setSubensambles] = useState([])
@@ -241,12 +291,12 @@ export default function CreacionFabricacion() {
   const [refreshKey, setRefreshKey] = useState(0)
 
   const [searchSub, setSearchSub] = useState('')
-  const [searchPt, setSearchPt] = useState('')
   const [idSub, setIdSub] = useState('')
   const [idPt, setIdPt] = useState('')
   const [cantidad, setCantidad] = useState('')
   const [referencia, setReferencia] = useState('FABRICACION')
   const [observaciones, setObservaciones] = useState('')
+  const [scanSubCodigo, setScanSubCodigo] = useState('')
 
   const [assocError, setAssocError] = useState('')
   const [assocSubId, setAssocSubId] = useState('')
@@ -304,16 +354,6 @@ export default function CreacionFabricacion() {
     })
   }, [subensambles, searchSub])
 
-  const filteredPt = useMemo(() => {
-    const term = searchPt.trim().toUpperCase()
-    if (!term) return productosTerminados
-    return productosTerminados.filter((x) => {
-      const hay =
-        `${x.codigo} ${x.nombre} ${x.subcategoria} ${x.medida} ${x.ubicacion}`.toUpperCase()
-      return hay.includes(term)
-    })
-  }, [productosTerminados, searchPt])
-
   const selectedSub = useMemo(
     () => subensambles.find((x) => String(x.id) === String(idSub)) || null,
     [subensambles, idSub],
@@ -331,6 +371,11 @@ export default function CreacionFabricacion() {
     }
     return m
   }, [asociaciones])
+
+  const selectedAssoc = useMemo(() => {
+    if (!idSub) return null
+    return assocBySub.get(String(idSub)) || null
+  }, [assocBySub, idSub])
 
   const subOptionsForFabricacion = useMemo(() => {
     if (isAdmin) return filteredSub
@@ -393,17 +438,17 @@ export default function CreacionFabricacion() {
 
   useEffect(() => {
     if (!idSub) {
-      if (!isAdmin) setIdPt('')
+      setIdPt('')
       return
     }
     const assoc = assocBySub.get(String(idSub))
     if (!assoc) {
-      if (!isAdmin) setIdPt('')
+      setIdPt('')
       return
     }
     const mappedPt = String(assoc.id_producto_terminado)
     if (mappedPt && mappedPt !== String(idPt || '')) setIdPt(mappedPt)
-  }, [assocBySub, idSub, idPt, isAdmin])
+  }, [assocBySub, idSub, idPt])
 
   const qty = useMemo(() => {
     const raw = String(cantidad).trim()
@@ -432,6 +477,18 @@ export default function CreacionFabricacion() {
     if (!selectedSub) return false
     return assocBySub.has(String(selectedSub.id))
   }, [assocBySub, selectedSub])
+
+  function pickSubensambleByCodigo(raw) {
+    const code = String(raw || '').trim()
+    if (!code) return
+    const found = subOptionsForFabricacion.find((x) => String(x.codigo) === code) || null
+    if (!found) {
+      setError(`No se encontró subensamble con código ${code}.`)
+      return
+    }
+    setError('')
+    setIdSub(String(found.id))
+  }
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -550,6 +607,38 @@ export default function CreacionFabricacion() {
           <form className="form-grid" onSubmit={onSubmit}>
             <label className="field">
               <span>Subensamble</span>
+              {isZebra ? (
+                <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                  <input
+                    value={scanSubCodigo}
+                    onChange={(e) => setScanSubCodigo(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return
+                      e.preventDefault()
+                      const v = String(scanSubCodigo || '').trim()
+                      if (!v) return
+                      pickSubensambleByCodigo(v)
+                      setScanSubCodigo('')
+                    }}
+                    placeholder="Escanear QR (código) del subensamble"
+                    inputMode="numeric"
+                    disabled={isLoading}
+                    autoFocus
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      pickSubensambleByCodigo(scanSubCodigo)
+                      setScanSubCodigo('')
+                    }}
+                    disabled={isLoading || !String(scanSubCodigo || '').trim()}
+                  >
+                    Buscar
+                  </button>
+                </div>
+              ) : null}
               <div style={{ display: 'flex', gap: 10 }}>
                 <input
                   value={searchSub}
@@ -583,6 +672,8 @@ export default function CreacionFabricacion() {
                   selectedId={idSub}
                   onPick={(next) => setIdSub(next)}
                   disabled={isLoading}
+                  pageSize={5}
+                  resetKey={`sub:${searchSub}`}
                   emptyText={
                     !subensambles.length
                       ? 'No hay subensambles registrados.'
@@ -596,81 +687,41 @@ export default function CreacionFabricacion() {
 
             <label className="field">
               <span>Producto terminado</span>
-              {isAdmin ? (
-                <>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <input
-                      value={searchPt}
-                      onChange={(e) => setSearchPt(e.target.value)}
-                      placeholder="Buscar por código, nombre, subcategoría..."
-                      disabled={isLoading || isPtLocked}
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        setIdPt('')
-                        setSearchPt('')
-                      }}
-                      disabled={isLoading || isPtLocked || !idPt}
-                    >
-                      Limpiar
-                    </button>
+              <div
+                style={{
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  borderRadius: 10,
+                  padding: 12,
+                  background: '#fff',
+                }}
+              >
+                {selectedPt ? (
+                  <>
+                    <div className="mono">
+                      {selectedPt.codigo} — {selectedPt.nombre}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      {selectedPt.subcategoria}
+                      {selectedPt.medida ? ` • ${selectedPt.medida}` : ''}
+                      {selectedPt.ubicacion ? ` • ${selectedPt.ubicacion}` : ''}
+                    </div>
+                  </>
+                ) : (
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    {idSub
+                      ? 'Este subensamble no tiene un producto terminado asociado.'
+                      : 'Selecciona un subensamble para asignar automáticamente el producto.'}
                   </div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    {isPtLocked
-                      ? 'Asociado automáticamente por configuración.'
-                      : isLoading
-                        ? 'Cargando...'
-                        : `Mostrando ${filteredPt.length} productos.`}
-                  </div>
-                  <div style={{ marginTop: 10 }}>
-                    <ItemPicker
-                      items={filteredPt}
-                      selectedId={idPt}
-                      onPick={(next) => setIdPt(next)}
-                      disabled={isLoading || isPtLocked}
-                      emptyText={
-                        !productosTerminados.length
-                          ? 'No hay productos terminados registrados.'
-                          : 'No hay resultados con ese filtro.'
-                      }
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      border: '1px solid rgba(0,0,0,0.12)',
-                      borderRadius: 10,
-                      padding: 12,
-                      background: '#fff',
-                    }}
-                  >
-                    {selectedPt ? (
-                      <>
-                        <div className="mono">
-                          {selectedPt.codigo} — {selectedPt.nombre}
-                        </div>
-                        <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                          {selectedPt.subcategoria}
-                          {selectedPt.medida ? ` • ${selectedPt.medida}` : ''}
-                          {selectedPt.ubicacion ? ` • ${selectedPt.ubicacion}` : ''}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="muted" style={{ fontSize: 13 }}>
-                        Selecciona un subensamble para que se asigne automáticamente el producto.
-                      </div>
-                    )}
-                  </div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    Asociado automáticamente por configuración.
-                  </div>
-                </>
-              )}
+                )}
+              </div>
+              {idSub && !selectedAssoc ? (
+                <div className="form-warn" style={{ marginTop: 12 }}>
+                  Este subensamble no tiene un producto terminado asociado. Habla con un administrador.
+                </div>
+              ) : null}
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Asociado automáticamente por configuración.
+              </div>
             </label>
 
             <label className="field">
@@ -684,25 +735,29 @@ export default function CreacionFabricacion() {
               />
             </label>
 
-            <label className="field">
-              <span>Referencia</span>
-              <input
-                value={referencia}
-                onChange={(e) => setReferencia(e.target.value)}
-                placeholder="FABRICACION"
-                disabled={isLoading}
-              />
-            </label>
+            {!isZebra ? (
+              <label className="field">
+                <span>Referencia</span>
+                <input
+                  value={referencia}
+                  onChange={(e) => setReferencia(e.target.value)}
+                  placeholder="FABRICACION"
+                  disabled={isLoading}
+                />
+              </label>
+            ) : null}
 
-            <label className="field" style={{ gridColumn: '1 / -1' }}>
-              <span>Observaciones (opcional)</span>
-              <input
-                value={observaciones}
-                onChange={(e) => setObservaciones(e.target.value)}
-                placeholder=""
-                disabled={isLoading}
-              />
-            </label>
+            {!isZebra ? (
+              <label className="field" style={{ gridColumn: '1 / -1' }}>
+                <span>Observaciones (opcional)</span>
+                <input
+                  value={observaciones}
+                  onChange={(e) => setObservaciones(e.target.value)}
+                  placeholder=""
+                  disabled={isLoading}
+                />
+              </label>
+            ) : null}
 
             {warnings.length ? (
               <div className="form-warn" style={{ gridColumn: '1 / -1' }}>
@@ -736,6 +791,37 @@ export default function CreacionFabricacion() {
             </div>
           ) : null}
         </div>
+
+        {!isZebra ? (
+          <div className="grid-2">
+            <ItemInfo title="Subensamble" item={selectedSub} />
+            <ItemInfo title="Producto terminado" item={selectedPt} />
+          </div>
+        ) : null}
+
+        {result && !isZebra ? (
+          <div className="card">
+            <div className="card-title">Resultado</div>
+            <div className="kv">
+              <div className="kv-row">
+                <div className="kv-k">Cantidad</div>
+                <div className="kv-v">{formatNumber(asNumber(result.cantidad, 0))}</div>
+              </div>
+              <div className="kv-row">
+                <div className="kv-k">Subensamble después</div>
+                <div className="kv-v">
+                  {formatNumber(asNumber(result?.subensamble?.despues, 0))}
+                </div>
+              </div>
+              <div className="kv-row">
+                <div className="kv-k">Producto terminado después</div>
+                <div className="kv-v">
+                  {formatNumber(asNumber(result?.producto_terminado?.despues, 0))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {isAdmin ? (
           <div className="card">
@@ -773,6 +859,8 @@ export default function CreacionFabricacion() {
                     selectedId={assocSubId}
                     onPick={(next) => setAssocSubId(next)}
                     disabled={isLoading || isAssocSubmitting}
+                    pageSize={5}
+                    resetKey={`assocSub:${assocSearchSub}`}
                     emptyText={
                       !subensambles.length
                         ? 'No hay subensambles registrados.'
@@ -816,6 +904,8 @@ export default function CreacionFabricacion() {
                     selectedId={assocPtId}
                     onPick={(next) => setAssocPtId(next)}
                     disabled={isLoading || isAssocSubmitting}
+                    pageSize={5}
+                    resetKey={`assocPt:${assocSearchPt}`}
                     emptyText={
                       !productosTerminados.length
                         ? 'No hay productos terminados registrados.'
@@ -878,35 +968,6 @@ export default function CreacionFabricacion() {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="grid-2">
-          <ItemInfo title="Subensamble" item={selectedSub} />
-          <ItemInfo title="Producto terminado" item={selectedPt} />
-        </div>
-
-        {result ? (
-          <div className="card">
-            <div className="card-title">Resultado</div>
-            <div className="kv">
-              <div className="kv-row">
-                <div className="kv-k">Cantidad</div>
-                <div className="kv-v">{formatNumber(asNumber(result.cantidad, 0))}</div>
-              </div>
-              <div className="kv-row">
-                <div className="kv-k">Subensamble después</div>
-                <div className="kv-v">
-                  {formatNumber(asNumber(result?.subensamble?.despues, 0))}
-                </div>
-              </div>
-              <div className="kv-row">
-                <div className="kv-k">Producto terminado después</div>
-                <div className="kv-v">
-                  {formatNumber(asNumber(result?.producto_terminado?.despues, 0))}
-                </div>
-              </div>
             </div>
           </div>
         ) : null}

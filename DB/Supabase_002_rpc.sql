@@ -586,6 +586,212 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION inv_move_pt_project(
+  tipo text,
+  id_producto_terminado integer,
+  cantidad numeric,
+  referencia text DEFAULT 'PROYECTO',
+  observaciones text DEFAULT NULL,
+  id_usuario integer DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  qty numeric;
+  pt_cat_id integer;
+  stock_loc_id integer;
+  proy_loc_id integer;
+  stock_before numeric;
+  stock_after numeric;
+  proy_before numeric;
+  proy_after numeric;
+  t text;
+BEGIN
+  qty := COALESCE(cantidad, 0);
+  IF qty <= 0 THEN
+    RAISE EXCEPTION 'Cantidad inválida';
+  END IF;
+
+  t := UPPER(BTRIM(COALESCE(tipo, '')));
+  IF t NOT IN ('SALIDA_PROYECTO', 'DEVOLUCION_PROYECTO') THEN
+    RAISE EXCEPTION 'Tipo inválido';
+  END IF;
+
+  SELECT id_categoria INTO pt_cat_id FROM categoria WHERE codigo_categoria = '40' AND activo = true;
+  IF pt_cat_id IS NULL THEN
+    RAISE EXCEPTION 'Categoría no configurada';
+  END IF;
+
+  PERFORM 1
+  FROM articulo a
+  WHERE a.id_articulo = inv_move_pt_project.id_producto_terminado
+    AND a.id_categoria = pt_cat_id
+    AND a.activo = true;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Producto terminado inválido';
+  END IF;
+
+  SELECT id_ubicacion INTO stock_loc_id FROM ubicacion WHERE codigo_ubicacion = 'STOCK' AND activa = true;
+  SELECT id_ubicacion INTO proy_loc_id FROM ubicacion WHERE codigo_ubicacion = 'PROYECTO' AND activa = true;
+  IF stock_loc_id IS NULL OR proy_loc_id IS NULL THEN
+    RAISE EXCEPTION 'Ubicaciones no configuradas';
+  END IF;
+
+  INSERT INTO stock (id_articulo, id_ubicacion, cantidad_actual, minimo, maximo, punto_reorden)
+  VALUES (inv_move_pt_project.id_producto_terminado, stock_loc_id, 0, 0, 0, 0)
+  ON CONFLICT (id_articulo, id_ubicacion) DO NOTHING;
+
+  INSERT INTO stock (id_articulo, id_ubicacion, cantidad_actual, minimo, maximo, punto_reorden)
+  VALUES (inv_move_pt_project.id_producto_terminado, proy_loc_id, 0, 0, 0, 0)
+  ON CONFLICT (id_articulo, id_ubicacion) DO NOTHING;
+
+  SELECT COALESCE(s.cantidad_actual, 0)
+  INTO stock_before
+  FROM stock s
+  WHERE s.id_articulo = inv_move_pt_project.id_producto_terminado AND s.id_ubicacion = stock_loc_id
+  FOR UPDATE;
+
+  SELECT COALESCE(s.cantidad_actual, 0)
+  INTO proy_before
+  FROM stock s
+  WHERE s.id_articulo = inv_move_pt_project.id_producto_terminado AND s.id_ubicacion = proy_loc_id
+  FOR UPDATE;
+
+  IF t = 'SALIDA_PROYECTO' THEN
+    IF stock_before < qty THEN
+      RAISE EXCEPTION 'No hay suficiente stock (disponible: %, requerido: %)', stock_before, qty;
+    END IF;
+    stock_after := stock_before - qty;
+    proy_after := proy_before + qty;
+    UPDATE stock SET cantidad_actual = stock_after, fecha_ultima_actualizacion = now()
+    WHERE id_articulo = inv_move_pt_project.id_producto_terminado AND id_ubicacion = stock_loc_id;
+    UPDATE stock SET cantidad_actual = proy_after, fecha_ultima_actualizacion = now()
+    WHERE id_articulo = inv_move_pt_project.id_producto_terminado AND id_ubicacion = proy_loc_id;
+
+    INSERT INTO movimiento_stock (
+      tipo_movimiento,
+      id_articulo,
+      id_ubicacion_origen,
+      id_ubicacion_destino,
+      cantidad,
+      referencia,
+      id_usuario,
+      observaciones
+    )
+    VALUES (
+      'PT_SALIDA_PROY',
+      inv_move_pt_project.id_producto_terminado,
+      stock_loc_id,
+      proy_loc_id,
+      qty,
+      NULLIF(BTRIM(inv_move_pt_project.referencia), ''),
+      inv_move_pt_project.id_usuario,
+      NULLIF(BTRIM(inv_move_pt_project.observaciones), '')
+    );
+  ELSE
+    IF proy_before < qty THEN
+      RAISE EXCEPTION 'No hay suficiente cantidad en proyecto (disponible: %, requerido: %)', proy_before, qty;
+    END IF;
+    stock_after := stock_before + qty;
+    proy_after := proy_before - qty;
+    UPDATE stock SET cantidad_actual = stock_after, fecha_ultima_actualizacion = now()
+    WHERE id_articulo = inv_move_pt_project.id_producto_terminado AND id_ubicacion = stock_loc_id;
+    UPDATE stock SET cantidad_actual = proy_after, fecha_ultima_actualizacion = now()
+    WHERE id_articulo = inv_move_pt_project.id_producto_terminado AND id_ubicacion = proy_loc_id;
+
+    INSERT INTO movimiento_stock (
+      tipo_movimiento,
+      id_articulo,
+      id_ubicacion_origen,
+      id_ubicacion_destino,
+      cantidad,
+      referencia,
+      id_usuario,
+      observaciones
+    )
+    VALUES (
+      'PT_DEVOL_PROY',
+      inv_move_pt_project.id_producto_terminado,
+      proy_loc_id,
+      stock_loc_id,
+      qty,
+      NULLIF(BTRIM(inv_move_pt_project.referencia), ''),
+      inv_move_pt_project.id_usuario,
+      NULLIF(BTRIM(inv_move_pt_project.observaciones), '')
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'tipo', t,
+    'cantidad', qty,
+    'stock', jsonb_build_object('ubicacion', 'STOCK', 'antes', stock_before, 'despues', stock_after),
+    'proyecto', jsonb_build_object('ubicacion', 'PROYECTO', 'antes', proy_before, 'despues', proy_after)
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION inv_pt_project_state(
+  id_producto_terminado integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  pt_cat_id integer;
+  stock_loc_id integer;
+  proy_loc_id integer;
+  stock_qty numeric;
+  proy_qty numeric;
+BEGIN
+  SELECT id_categoria INTO pt_cat_id FROM categoria WHERE codigo_categoria = '40' AND activo = true;
+  IF pt_cat_id IS NULL THEN
+    RAISE EXCEPTION 'Categoría no configurada';
+  END IF;
+
+  PERFORM 1
+  FROM articulo a
+  WHERE a.id_articulo = inv_pt_project_state.id_producto_terminado
+    AND a.id_categoria = pt_cat_id
+    AND a.activo = true;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Producto terminado inválido';
+  END IF;
+
+  SELECT id_ubicacion INTO stock_loc_id FROM ubicacion WHERE codigo_ubicacion = 'STOCK' AND activa = true;
+  SELECT id_ubicacion INTO proy_loc_id FROM ubicacion WHERE codigo_ubicacion = 'PROYECTO' AND activa = true;
+  IF stock_loc_id IS NULL OR proy_loc_id IS NULL THEN
+    RAISE EXCEPTION 'Ubicaciones no configuradas';
+  END IF;
+
+  INSERT INTO stock (id_articulo, id_ubicacion, cantidad_actual, minimo, maximo, punto_reorden)
+  VALUES (inv_pt_project_state.id_producto_terminado, stock_loc_id, 0, 0, 0, 0)
+  ON CONFLICT (id_articulo, id_ubicacion) DO NOTHING;
+
+  INSERT INTO stock (id_articulo, id_ubicacion, cantidad_actual, minimo, maximo, punto_reorden)
+  VALUES (inv_pt_project_state.id_producto_terminado, proy_loc_id, 0, 0, 0, 0)
+  ON CONFLICT (id_articulo, id_ubicacion) DO NOTHING;
+
+  SELECT COALESCE(s.cantidad_actual, 0)
+  INTO stock_qty
+  FROM stock s
+  WHERE s.id_articulo = inv_pt_project_state.id_producto_terminado AND s.id_ubicacion = stock_loc_id;
+
+  SELECT COALESCE(s.cantidad_actual, 0)
+  INTO proy_qty
+  FROM stock s
+  WHERE s.id_articulo = inv_pt_project_state.id_producto_terminado AND s.id_ubicacion = proy_loc_id;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'id_producto_terminado', inv_pt_project_state.id_producto_terminado,
+    'stock', jsonb_build_object('ubicacion', 'STOCK', 'cantidad', stock_qty),
+    'proyecto', jsonb_build_object('ubicacion', 'PROYECTO', 'cantidad', proy_qty)
+  );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION inv_assoc_list()
 RETURNS jsonb
 LANGUAGE sql
@@ -708,16 +914,23 @@ CREATE OR REPLACE FUNCTION inv_update_item(
   id_articulo integer,
   nombre_base text DEFAULT NULL,
   unidad_medida text DEFAULT NULL,
-  dimension_principal text DEFAULT NULL
+  dimension_principal text DEFAULT NULL,
+  cantidad_actual numeric DEFAULT NULL,
+  minimo numeric DEFAULT NULL,
+  maximo numeric DEFAULT NULL,
+  punto_reorden numeric DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
 AS $$
 DECLARE
   categoria_codigo text;
+  ubicacion_codigo text;
+  ubicacion_id integer;
   updated boolean;
 BEGIN
   categoria_codigo := inv_category_code(kind);
+  ubicacion_codigo := inv_default_location_code(kind);
 
   PERFORM 1
   FROM articulo a
@@ -741,6 +954,45 @@ BEGIN
     END
   WHERE a.id_articulo = inv_update_item.id_articulo;
 
+  SELECT u.id_ubicacion INTO ubicacion_id
+  FROM ubicacion u
+  WHERE u.codigo_ubicacion = UPPER(BTRIM(ubicacion_codigo)) AND u.activa = true;
+
+  IF ubicacion_id IS NULL THEN
+    RAISE EXCEPTION 'Ubicación inválida';
+  END IF;
+
+  IF inv_update_item.cantidad_actual IS NOT NULL
+    OR inv_update_item.minimo IS NOT NULL
+    OR inv_update_item.maximo IS NOT NULL
+    OR inv_update_item.punto_reorden IS NOT NULL THEN
+    INSERT INTO stock (
+      id_articulo,
+      id_ubicacion,
+      cantidad_actual,
+      minimo,
+      maximo,
+      punto_reorden,
+      fecha_ultima_actualizacion
+    )
+    VALUES (
+      inv_update_item.id_articulo,
+      ubicacion_id,
+      COALESCE(inv_update_item.cantidad_actual, 0),
+      COALESCE(inv_update_item.minimo, 0),
+      COALESCE(inv_update_item.maximo, 0),
+      COALESCE(inv_update_item.punto_reorden, 0),
+      now()
+    )
+    ON CONFLICT (id_articulo, id_ubicacion)
+    DO UPDATE SET
+      cantidad_actual = COALESCE(inv_update_item.cantidad_actual, stock.cantidad_actual),
+      minimo = COALESCE(inv_update_item.minimo, stock.minimo),
+      maximo = COALESCE(inv_update_item.maximo, stock.maximo),
+      punto_reorden = COALESCE(inv_update_item.punto_reorden, stock.punto_reorden),
+      fecha_ultima_actualizacion = now();
+  END IF;
+
   updated := true;
   RETURN jsonb_build_object('ok', true, 'updated', updated);
 END;
@@ -752,8 +1004,10 @@ GRANT EXECUTE ON FUNCTION inv_summary(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_items(text, text, text, integer, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_next_codigo(text, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_create_item(text, bigint, integer, text, text, text, text, text, numeric, numeric, numeric, numeric) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION inv_update_item(text, integer, text, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_update_item(text, integer, text, text, text, numeric, numeric, numeric, numeric) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_fabricate(integer, integer, numeric, text, text, integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_move_pt_project(text, integer, numeric, text, text, integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_pt_project_state(integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_list() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_upsert(integer, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_delete(integer) TO anon, authenticated;

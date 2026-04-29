@@ -200,6 +200,11 @@ def _require_admin(authorization: str | None) -> dict:
   return ctx
 
 
+def _require_not_zebra(ctx: dict):
+  if (ctx.get('role') or 'user') == 'zebra':
+    raise HTTPException(status_code=403, detail='No autorizado')
+
+
 app = FastAPI(title='InventarioTaller API')
 
 app.add_middleware(
@@ -222,7 +227,8 @@ def health():
 
 @app.get('/inventario/{kind}/summary')
 def inventory_summary(kind: str, authorization: str | None = Header(default=None)):
-  _require_app_access(authorization)
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
   cache_key = f'summary:{kind}'
   cached, ok = _cache_get(cache_key)
   if ok:
@@ -241,7 +247,9 @@ def inventory_items(
   offset: int = Query(0, ge=0),
   authorization: str | None = Header(default=None),
 ):
-  _require_app_access(authorization)
+  ctx = _require_app_access(authorization)
+  if (ctx.get('role') or 'user') == 'zebra' and kind not in ('subensambles', 'productos-terminados'):
+    raise HTTPException(status_code=403, detail='No autorizado')
   return _supabase_rpc(
     'inv_items',
     {
@@ -257,7 +265,8 @@ def inventory_items(
 
 @app.get('/inventario/{kind}/meta')
 def inventory_meta(kind: str, authorization: str | None = Header(default=None)):
-  _require_app_access(authorization)
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
   cache_key = f'meta:{kind}'
   cached, ok = _cache_get(cache_key)
   if ok:
@@ -289,6 +298,10 @@ class UpdateInventoryItem(BaseModel):
   dimension_principal: str | None = Field(default=None, max_length=50)
   detalle_adicional: str | None = Field(default=None, max_length=255)
   unidad_medida: str | None = Field(default=None, min_length=1, max_length=20)
+  cantidad_actual: float | None = Field(default=None, ge=0)
+  minimo: float | None = Field(default=None, ge=0)
+  maximo: float | None = Field(default=None, ge=0)
+  punto_reorden: float | None = Field(default=None, ge=0)
 
 class FabricacionPayload(BaseModel):
   id_subensamble: int = Field(..., ge=1)
@@ -301,9 +314,17 @@ class AsociacionPayload(BaseModel):
   id_subensamble: int = Field(..., ge=1)
   id_producto_terminado: int = Field(..., ge=1)
 
+class MovimientoPayload(BaseModel):
+  tipo: str = Field(..., min_length=3, max_length=30)
+  id_producto_terminado: int = Field(..., ge=1)
+  cantidad: float = Field(..., gt=0)
+  referencia: str | None = Field(default=None, max_length=100)
+  observaciones: str | None = Field(default=None, max_length=255)
+
 @app.get('/inventario/{kind}/next-codigo')
 def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1), authorization: str | None = Header(default=None)):
-  _require_app_access(authorization)
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
   codigo_articulo = _supabase_rpc(
     'inv_next_codigo',
     {'kind': kind, 'id_subcategoria': id_subcategoria},
@@ -314,7 +335,8 @@ def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1), authorizatio
 
 @app.post('/inventario/{kind}/items')
 def create_inventory_item(kind: str, payload: CreateInventoryItem, authorization: str | None = Header(default=None)):
-  _require_app_access(authorization)
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
   res = _supabase_rpc(
     'inv_create_item',
     {
@@ -339,7 +361,8 @@ def create_inventory_item(kind: str, payload: CreateInventoryItem, authorization
 
 @app.patch('/inventario/{kind}/items/{id_articulo}')
 def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryItem, authorization: str | None = Header(default=None)):
-  _require_app_access(authorization)
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
   res = _supabase_rpc(
     'inv_update_item',
     {
@@ -348,6 +371,10 @@ def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryI
       'nombre_base': payload.nombre_base,
       'unidad_medida': payload.unidad_medida,
       'dimension_principal': payload.dimension_principal,
+      'cantidad_actual': payload.cantidad_actual,
+      'minimo': payload.minimo,
+      'maximo': payload.maximo,
+      'punto_reorden': payload.punto_reorden,
     },
     authorization=authorization,
   )
@@ -398,6 +425,36 @@ def upsert_asociacion(payload: AsociacionPayload, authorization: str | None = He
 def borrar_asociacion(id_subensamble: int, authorization: str | None = Header(default=None)):
   _require_admin(authorization)
   return _supabase_rpc('inv_assoc_delete', {'id_subensamble': id_subensamble}, authorization=authorization)
+
+@app.post('/logistica/movimientos')
+def crear_movimiento(payload: MovimientoPayload, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  tipo = (payload.tipo or '').strip().upper()
+  if tipo not in ('SALIDA_PROYECTO', 'DEVOLUCION_PROYECTO'):
+    raise HTTPException(status_code=400, detail='Tipo inválido')
+  res = _supabase_rpc(
+    'inv_move_pt_project',
+    {
+      'tipo': tipo,
+      'id_producto_terminado': payload.id_producto_terminado,
+      'cantidad': payload.cantidad,
+      'referencia': payload.referencia,
+      'observaciones': payload.observaciones,
+      'id_usuario': None,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('summary:productos-terminados')
+  return res
+
+@app.get('/logistica/movimientos/estado')
+def movimiento_estado(id_producto_terminado: int = Query(..., ge=1), authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  return _supabase_rpc(
+    'inv_pt_project_state',
+    {'id_producto_terminado': id_producto_terminado},
+    authorization=authorization,
+  )
 
 
 @app.post('/auth/register')

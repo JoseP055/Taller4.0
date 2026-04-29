@@ -151,20 +151,74 @@ export function AuthProvider({ children }) {
   }
 
   async function fetchApi(path, { method = 'GET', body, token } = {}) {
-    const res = await fetch(`${apiBase}${path}`, {
-      method,
-      headers: {
-        ...(body ? { 'Content-Type': 'application/json' } : null),
-        ...(token ? { Authorization: `Bearer ${token}` } : null),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    })
-    if (!res.ok) {
-      throw new Error(await readBackendError(res))
+    const doFetch = async (useToken) => {
+      return fetch(`${apiBase}${path}`, {
+        method,
+        headers: {
+          ...(body ? { 'Content-Type': 'application/json' } : null),
+          ...(useToken ? { Authorization: `Bearer ${useToken}` } : null),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      })
     }
-    const contentType = res.headers.get('content-type') || ''
-    if (contentType.includes('application/json')) return res.json()
-    return null
+
+    const isExpiredJwt = (text) => {
+      const t = String(text || '')
+      return t.includes('"error_code":"bad_jwt"') && (t.toLowerCase().includes('expired') || t.toLowerCase().includes('expir'))
+    }
+
+    const initial = await doFetch(token)
+    if (initial.ok) {
+      const contentType = initial.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) return initial.json()
+      return null
+    }
+
+    const firstErrorText = await initial.text().catch(() => '')
+    if ((initial.status === 401 || initial.status === 403) && isExpiredJwt(firstErrorText)) {
+      const raw = localStorage.getItem(STORAGE_SESSION)
+      const session = raw ? JSON.parse(raw) : null
+      const refresh = session?.refresh_token
+      if (refresh) {
+        const data = await supabaseRefreshToken(refresh)
+        const nextExpiresAt = Date.now() + Number(data.expires_in || 0) * 1000
+        const nextSession = {
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+          token_type: data.token_type,
+          expires_at: nextExpiresAt,
+          user: data.user || session?.user || null,
+        }
+        storeSession(nextSession)
+        setUser(nextSession.user)
+        const retry = await doFetch(nextSession.access_token)
+        if (!retry.ok) throw new Error(await readBackendError(retry))
+        const contentType = retry.headers.get('content-type') || ''
+        if (contentType.includes('application/json')) return retry.json()
+        return null
+      }
+    }
+
+    const msg = (() => {
+      if (!firstErrorText) return `HTTP ${initial.status}`
+      try {
+        const outer = JSON.parse(firstErrorText)
+        const detail = outer?.detail ?? outer?.message ?? outer
+        if (typeof detail === 'string') {
+          try {
+            const inner = JSON.parse(detail)
+            return inner?.message || inner?.msg || inner?.error || detail
+          } catch {
+            return detail
+          }
+        }
+        if (detail && typeof detail === 'object') return detail?.message || detail?.msg || JSON.stringify(detail)
+        return String(detail)
+      } catch {
+        return firstErrorText
+      }
+    })()
+    throw new Error(msg)
   }
 
   const login = useCallback(

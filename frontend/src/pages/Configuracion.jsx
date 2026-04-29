@@ -21,6 +21,9 @@ const API_BASE = (() => {
   }
 })()
 const ACCESS_TOKEN_KEY = 'ductos_inventory_supabase_access_token'
+const STORAGE_SESSION = 'ductos_inventory_supabase_session'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 function authHeaders() {
   const token = localStorage.getItem(ACCESS_TOKEN_KEY)
@@ -28,19 +31,88 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}` }
 }
 
-async function fetchJson(path, { signal, method = 'GET', body } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      ...(body ? { 'Content-Type': 'application/json' } : null),
-      ...authHeaders(),
+function parseBackendErrorText(text) {
+  if (!text) return ''
+  try {
+    const outer = JSON.parse(text)
+    const detail = outer?.detail ?? outer?.message ?? outer
+    if (typeof detail === 'string') {
+      try {
+        const inner = JSON.parse(detail)
+        return inner?.msg || inner?.message || inner?.error || detail
+      } catch {
+        return detail
+      }
+    }
+    if (detail && typeof detail === 'object') return detail?.msg || detail?.message || JSON.stringify(detail)
+    return String(detail)
+  } catch {
+    return text
+  }
+}
+
+function isExpiredJwtErrorText(text) {
+  const t = String(text || '')
+  return t.includes('"error_code":"bad_jwt"') && (t.toLowerCase().includes('expired') || t.toLowerCase().includes('expir'))
+}
+
+async function refreshAccessTokenFromSession() {
+  const raw = localStorage.getItem(STORAGE_SESSION)
+  const session = raw ? JSON.parse(raw) : null
+  const refresh = session?.refresh_token
+  if (!refresh) return null
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  const res = await fetch(
+    `${String(SUPABASE_URL).replace(/\/+$/, '')}/auth/v1/token?grant_type=refresh_token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+      body: JSON.stringify({ refresh_token: refresh }),
     },
-    body: body ? JSON.stringify(body) : undefined,
-    signal,
-  })
+  )
+  if (!res.ok) return null
+  const data = await res.json()
+  const nextExpiresAt = Date.now() + Number(data.expires_in || 0) * 1000
+  const nextSession = {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    token_type: data.token_type,
+    expires_at: nextExpiresAt,
+    user: data.user || session?.user || null,
+  }
+  localStorage.setItem(STORAGE_SESSION, JSON.stringify(nextSession))
+  localStorage.setItem(ACCESS_TOKEN_KEY, nextSession?.access_token ? String(nextSession.access_token) : '')
+  return String(nextSession.access_token || '')
+}
+
+async function fetchJson(path, { signal, method = 'GET', body } = {}) {
+  const doFetch = async () => {
+    return fetch(`${API_BASE}${path}`, {
+      method,
+      headers: {
+        ...(body ? { 'Content-Type': 'application/json' } : null),
+        ...authHeaders(),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal,
+    })
+  }
+
+  const res = await doFetch()
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(text || `HTTP ${res.status}`)
+    if ((res.status === 401 || res.status === 403) && isExpiredJwtErrorText(text)) {
+      const nextToken = await refreshAccessTokenFromSession()
+      if (nextToken) {
+        const retry = await doFetch()
+        if (!retry.ok) {
+          const text2 = await retry.text().catch(() => '')
+          throw new Error(parseBackendErrorText(text2) || `HTTP ${retry.status}`)
+        }
+        return retry.json()
+      }
+    }
+    throw new Error(parseBackendErrorText(text) || `HTTP ${res.status}`)
   }
   return res.json()
 }
@@ -190,6 +262,7 @@ export default function Configuracion() {
                         >
                           <option value="user">user</option>
                           <option value="admin">admin</option>
+                          <option value="zebra">zebra</option>
                         </select>
                       </td>
                       <td>

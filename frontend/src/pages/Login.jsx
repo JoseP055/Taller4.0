@@ -10,7 +10,7 @@ export default function Login() {
   const from = useMemo(() => {
     const state = location.state
     if (state && typeof state.from === 'string') return state.from
-    return '/app/dashboard'
+    return '/app'
   }, [location.state])
 
   const [email, setEmail] = useState('')
@@ -20,7 +20,7 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [mode, setMode] = useState('login')
 
-  if (user) return <Navigate to="/app/dashboard" replace />
+  if (user) return <Navigate to="/app" replace />
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -46,7 +46,9 @@ export default function Login() {
       setError(result.message || 'No se pudo iniciar sesión')
       return
     }
-    navigate(from, { replace: true })
+    const role = result?.appUser?.role || 'user'
+    const target = role === 'zebra' ? '/app/logistica/creacion-fabricacion' : from
+    navigate(target, { replace: true })
   }
 
   return (
