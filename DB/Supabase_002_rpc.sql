@@ -133,66 +133,71 @@ CREATE OR REPLACE FUNCTION inv_items(
   off integer DEFAULT 0
 )
 RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 AS $$
-WITH params AS (
-  SELECT
-    inv_category_code(kind) AS categoria_codigo,
-    inv_default_location_code(kind) AS ubicacion_codigo,
-    NULLIF(BTRIM(search), '') AS term,
-    COALESCE(NULLIF(BTRIM(estatus), ''), 'Todas') AS est,
-    GREATEST(lim, 1) AS lim,
-    GREATEST(off, 0) AS off
-),
-rows AS (
-  SELECT
-    a.id_articulo AS id,
-    a.codigo_articulo AS codigo,
-    a.nombre_base AS nombre,
-    sc.nombre_subcategoria AS subcategoria,
-    a.dimension_principal AS medida,
-    COALESCE(s.cantidad_actual, 0) AS cantidad,
-    a.unidad_medida AS unidad,
-    COALESCE(s.minimo, 0) AS min_stock,
-    u.codigo_ubicacion AS ubicacion,
-    CASE
-      WHEN COALESCE(s.cantidad_actual, 0) < COALESCE(s.minimo, 0) THEN 'Alerta'
-      ELSE 'Disponible'
-    END AS estatus
-  FROM params p
-  JOIN categoria c ON c.codigo_categoria = p.categoria_codigo
-  JOIN articulo a ON a.id_categoria = c.id_categoria
-  JOIN subcategoria sc ON sc.id_subcategoria = a.id_subcategoria
-  JOIN ubicacion u ON u.codigo_ubicacion = p.ubicacion_codigo
-  LEFT JOIN stock s ON s.id_articulo = a.id_articulo AND s.id_ubicacion = u.id_ubicacion
-  WHERE a.activo = true
-    AND c.activo = true
-    AND sc.activo = true
-    AND (
-      p.term IS NULL
-      OR CAST(a.codigo_articulo AS text) ILIKE '%' || p.term || '%'
-      OR a.nombre_base ILIKE '%' || p.term || '%'
-      OR sc.nombre_subcategoria ILIKE '%' || p.term || '%'
-      OR u.codigo_ubicacion ILIKE '%' || p.term || '%'
+DECLARE
+  categoria_codigo text;
+  ubicacion_codigo text;
+  term text;
+  est text;
+  l integer;
+  o integer;
+BEGIN
+  categoria_codigo := inv_category_code(kind);
+  ubicacion_codigo := inv_default_location_code(kind);
+  term := NULLIF(BTRIM(search), '');
+  est := COALESCE(NULLIF(BTRIM(estatus), ''), 'Todas');
+  l := GREATEST(COALESCE(lim, 50), 1);
+  o := GREATEST(COALESCE(off, 0), 0);
+
+  RETURN (
+    SELECT jsonb_build_object(
+      'items',
+      COALESCE(jsonb_agg(to_jsonb(r)), '[]'::jsonb),
+      'offset', o,
+      'limit', l
     )
-    AND (
-      p.est = 'Todas'
-      OR (p.est = 'Disponible' AND COALESCE(s.cantidad_actual, 0) >= COALESCE(s.minimo, 0))
-      OR (p.est = 'Alerta' AND COALESCE(s.cantidad_actual, 0) < COALESCE(s.minimo, 0))
-    )
-  ORDER BY a.codigo_articulo DESC
-  OFFSET (SELECT off FROM params) ROWS
-  FETCH NEXT (SELECT lim FROM params) ROWS ONLY
-)
-SELECT jsonb_build_object(
-  'items',
-  COALESCE(
-    (SELECT jsonb_agg(to_jsonb(rows)) FROM rows),
-    '[]'::jsonb
-  ),
-  'offset', (SELECT off FROM params),
-  'limit', (SELECT lim FROM params)
-);
+    FROM (
+      SELECT
+        a.id_articulo AS id,
+        a.codigo_articulo AS codigo,
+        a.nombre_base AS nombre,
+        sc.nombre_subcategoria AS subcategoria,
+        a.dimension_principal AS medida,
+        COALESCE(s.cantidad_actual, 0) AS cantidad,
+        a.unidad_medida AS unidad,
+        COALESCE(s.minimo, 0) AS min_stock,
+        u.codigo_ubicacion AS ubicacion,
+        CASE
+          WHEN COALESCE(s.cantidad_actual, 0) < COALESCE(s.minimo, 0) THEN 'Alerta'
+          ELSE 'Disponible'
+        END AS estatus
+      FROM categoria c
+      JOIN articulo a ON a.id_categoria = c.id_categoria
+      JOIN subcategoria sc ON sc.id_subcategoria = a.id_subcategoria
+      JOIN ubicacion u ON u.codigo_ubicacion = ubicacion_codigo
+      LEFT JOIN stock s ON s.id_articulo = a.id_articulo AND s.id_ubicacion = u.id_ubicacion
+      WHERE a.activo = true
+        AND c.activo = true
+        AND sc.activo = true
+        AND c.codigo_categoria = categoria_codigo
+        AND (
+          term IS NULL
+          OR CAST(a.codigo_articulo AS text) ILIKE '%' || term || '%'
+          OR a.nombre_base ILIKE '%' || term || '%'
+          OR sc.nombre_subcategoria ILIKE '%' || term || '%'
+          OR u.codigo_ubicacion ILIKE '%' || term || '%'
+        )
+        AND (
+          est = 'Todas'
+          OR (est = 'Disponible' AND COALESCE(s.cantidad_actual, 0) >= COALESCE(s.minimo, 0))
+          OR (est = 'Alerta' AND COALESCE(s.cantidad_actual, 0) < COALESCE(s.minimo, 0))
+        )
+      ORDER BY a.codigo_articulo DESC
+      LIMIT l OFFSET o
+    ) r
+  );
+END;
 $$;
 
 CREATE OR REPLACE FUNCTION inv_summary(kind text)
@@ -448,4 +453,3 @@ GRANT EXECUTE ON FUNCTION inv_items(text, text, text, integer, integer) TO anon,
 GRANT EXECUTE ON FUNCTION inv_next_codigo(text, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_create_item(text, bigint, integer, text, text, text, text, text, numeric, numeric, numeric, numeric) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_update_item(text, integer, text, text, text) TO anon, authenticated;
-
