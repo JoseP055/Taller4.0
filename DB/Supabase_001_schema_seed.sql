@@ -123,6 +123,33 @@ CREATE TABLE IF NOT EXISTS uso_maquina (
   observaciones varchar(255) NULL
 );
 
+ALTER TABLE categoria DISABLE ROW LEVEL SECURITY;
+ALTER TABLE subcategoria DISABLE ROW LEVEL SECURITY;
+ALTER TABLE articulo DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ubicacion DISABLE ROW LEVEL SECURITY;
+ALTER TABLE stock DISABLE ROW LEVEL SECURITY;
+ALTER TABLE usuario DISABLE ROW LEVEL SECURITY;
+ALTER TABLE movimiento_stock DISABLE ROW LEVEL SECURITY;
+ALTER TABLE colaborador DISABLE ROW LEVEL SECURITY;
+ALTER TABLE maquina DISABLE ROW LEVEL SECURITY;
+ALTER TABLE herramienta_unidad DISABLE ROW LEVEL SECURITY;
+ALTER TABLE asignacion_herramienta DISABLE ROW LEVEL SECURITY;
+ALTER TABLE uso_maquina DISABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_subcategoria_id_categoria ON subcategoria(id_categoria);
+CREATE INDEX IF NOT EXISTS idx_articulo_id_categoria ON articulo(id_categoria);
+CREATE INDEX IF NOT EXISTS idx_articulo_id_subcategoria ON articulo(id_subcategoria);
+CREATE INDEX IF NOT EXISTS idx_stock_id_articulo ON stock(id_articulo);
+CREATE INDEX IF NOT EXISTS idx_stock_id_ubicacion ON stock(id_ubicacion);
+CREATE INDEX IF NOT EXISTS idx_mov_stock_id_articulo ON movimiento_stock(id_articulo);
+CREATE INDEX IF NOT EXISTS idx_mov_stock_id_ubi_origen ON movimiento_stock(id_ubicacion_origen);
+CREATE INDEX IF NOT EXISTS idx_mov_stock_id_ubi_destino ON movimiento_stock(id_ubicacion_destino);
+CREATE INDEX IF NOT EXISTS idx_maquina_id_articulo ON maquina(id_articulo);
+CREATE INDEX IF NOT EXISTS idx_herramienta_id_articulo ON herramienta_unidad(id_articulo);
+CREATE INDEX IF NOT EXISTS idx_asig_herr_id_herramienta ON asignacion_herramienta(id_herramienta);
+CREATE INDEX IF NOT EXISTS idx_asig_herr_id_colaborador ON asignacion_herramienta(id_colaborador);
+CREATE INDEX IF NOT EXISTS idx_uso_maquina_id_maquina ON uso_maquina(id_maquina);
+
 INSERT INTO usuario (username, password_hash)
 VALUES ('admin', 'admin')
 ON CONFLICT (username) DO NOTHING;
@@ -169,4 +196,3 @@ ON CONFLICT (codigo_colaborador) DO NOTHING;
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
-

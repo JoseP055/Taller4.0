@@ -34,19 +34,11 @@ python -m pip install fastapi uvicorn pydantic
 
 ### Configuración de conexión
 
-El backend usa Supabase por variables de entorno:
+El backend usa Supabase por variables de entorno (puedes ponerlas en `backend/.env`):
 
 ```powershell
 $env:SUPABASE_URL="https://TU_PROYECTO.supabase.co"
 $env:SUPABASE_ANON_KEY="TU_ANON_KEY"
-python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Ejemplo (Windows Auth):
-
-```powershell
-$env:DB_SERVER=".\SQLEXPRESS"
-$env:DB_DATABASE="InventarioTaller"
 python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -65,7 +57,7 @@ npm install
 
 ### Configuración de API
 
-Por defecto el frontend usa `http://localhost:8000`. Si necesitas otra URL:
+Por defecto el frontend usa `http://localhost:8000`. Si necesitas otra URL, puedes ponerla en `frontend/.env` como `VITE_API_URL`.
 
 ```powershell
 $env:VITE_API_URL="http://localhost:8000"
@@ -99,7 +91,7 @@ Si tu PowerShell bloquea scripts:
 powershell -ExecutionPolicy Bypass -File .\start-dev.ps1
 ```
 
-Nota: si necesitas configurar la BD antes, define `DB_SERVER`/`DB_DATABASE` en la misma terminal antes de ejecutar `start-dev.ps1`.
+Nota: `start-dev.ps1` lee automáticamente `backend/.env` (SUPABASE_URL, SUPABASE_ANON_KEY) y `frontend/.env` (VITE_API_URL) si existen.
 
 ## Subir a GitHub (repo nuevo)
 

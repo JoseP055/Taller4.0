@@ -1,12 +1,62 @@
 import os
 import json
-from datetime import datetime
+from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+_CACHE: dict[str, tuple[float, object]] = {}
+
+
+def _cache_get(key: str):
+  entry = _CACHE.get(key)
+  if not entry:
+    return None, False
+  expires_at, value = entry
+  if monotonic() >= expires_at:
+    _CACHE.pop(key, None)
+    return None, False
+  return value, True
+
+
+def _cache_set(key: str, value: object, ttl_seconds: float):
+  _CACHE[key] = (monotonic() + max(float(ttl_seconds), 0.0), value)
+
+
+def _cache_invalidate_prefix(prefix: str):
+  to_delete = [k for k in _CACHE.keys() if k.startswith(prefix)]
+  for k in to_delete:
+    _CACHE.pop(k, None)
+
+
+def _load_dotenv():
+  base_dir = os.path.dirname(__file__)
+  path = os.path.join(base_dir, '.env')
+  if not os.path.exists(path):
+    return
+  try:
+    with open(path, 'r', encoding='utf-8') as f:
+      for raw in f:
+        line = raw.strip()
+        if not line or line.startswith('#'):
+          continue
+        if '=' not in line:
+          continue
+        k, v = line.split('=', 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if not k:
+          continue
+        if os.environ.get(k) is None:
+          os.environ[k] = v
+  except Exception:
+    return
+
+
+_load_dotenv()
 
 
 def _supabase_url() -> str | None:
@@ -55,7 +105,7 @@ def _supabase_rpc(function_name: str, payload: dict):
   )
 
   try:
-    with urlopen(req, timeout=10) as res:
+    with urlopen(req, timeout=20) as res:
       raw = res.read().decode('utf-8') if res else ''
       if not raw:
         return None
@@ -63,7 +113,7 @@ def _supabase_rpc(function_name: str, payload: dict):
   except HTTPError as e:
     raw = e.read().decode('utf-8') if hasattr(e, 'read') else ''
     detail = raw or str(e)
-    raise HTTPException(status_code=500, detail=detail) from e
+    raise HTTPException(status_code=int(getattr(e, 'code', 500) or 500), detail=detail) from e
   except URLError as e:
     raise HTTPException(status_code=500, detail=f'Error de red Supabase: {e}') from e
 
@@ -72,11 +122,7 @@ app = FastAPI(title='InventarioTaller API')
 
 app.add_middleware(
   CORSMiddleware,
-  allow_origins=[
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-  ],
-  allow_origin_regex=r'^http://(\d{1,3}\.){3}\d{1,3}:5173$',
+  allow_origin_regex=r'^http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}):\d+$',
   allow_credentials=True,
   allow_methods=['*'],
   allow_headers=['*'],
@@ -94,7 +140,13 @@ def health():
 
 @app.get('/inventario/{kind}/summary')
 def inventory_summary(kind: str):
-  return _supabase_rpc('inv_summary', {'kind': kind})
+  cache_key = f'summary:{kind}'
+  cached, ok = _cache_get(cache_key)
+  if ok:
+    return cached
+  data = _supabase_rpc('inv_summary', {'kind': kind})
+  _cache_set(cache_key, data, ttl_seconds=1.5)
+  return data
 
 
 @app.get('/inventario/{kind}/items')
@@ -119,7 +171,13 @@ def inventory_items(
 
 @app.get('/inventario/{kind}/meta')
 def inventory_meta(kind: str):
-  return _supabase_rpc('inv_meta', {'kind': kind})
+  cache_key = f'meta:{kind}'
+  cached, ok = _cache_get(cache_key)
+  if ok:
+    return cached
+  data = _supabase_rpc('inv_meta', {'kind': kind})
+  _cache_set(cache_key, data, ttl_seconds=300)
+  return data
 
 
 class CreateInventoryItem(BaseModel):
@@ -156,7 +214,7 @@ def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1)):
 
 @app.post('/inventario/{kind}/items')
 def create_inventory_item(kind: str, payload: CreateInventoryItem):
-  return _supabase_rpc(
+  res = _supabase_rpc(
     'inv_create_item',
     {
       'kind': kind,
@@ -173,11 +231,13 @@ def create_inventory_item(kind: str, payload: CreateInventoryItem):
       'punto_reorden': payload.punto_reorden,
     },
   )
+  _cache_invalidate_prefix(f'summary:{kind}')
+  return res
 
 
 @app.patch('/inventario/{kind}/items/{id_articulo}')
 def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryItem):
-  return _supabase_rpc(
+  res = _supabase_rpc(
     'inv_update_item',
     {
       'kind': kind,
@@ -187,3 +247,5 @@ def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryI
       'dimension_principal': payload.dimension_principal,
     },
   )
+  _cache_invalidate_prefix(f'summary:{kind}')
+  return res

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE =
+  import.meta.env.VITE_API_URL || `http://${globalThis.location?.hostname || 'localhost'}:8000`
 const KIND = 'materias-primas'
 const FIXED_LOCATION_CODE = 'CONSUMIBLES'
 
@@ -29,11 +30,33 @@ function formatNumber(n) {
   return new Intl.NumberFormat('es-ES').format(n)
 }
 
+async function readApiError(res) {
+  const text = await res.text().catch(() => '')
+  if (!text) return `HTTP ${res.status}`
+  try {
+    const outer = JSON.parse(text)
+    const detail = outer?.detail ?? outer?.message ?? outer
+    if (typeof detail === 'string') {
+      try {
+        const inner = JSON.parse(detail)
+        return inner?.message || inner?.error || detail
+      } catch {
+        return detail
+      }
+    }
+    if (detail && typeof detail === 'object') {
+      return detail?.message || JSON.stringify(detail)
+    }
+    return String(detail)
+  } catch {
+    return text
+  }
+}
+
 async function fetchJson(path, { signal } = {}) {
   const res = await fetch(`${API_BASE}${path}`, { signal })
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text || `HTTP ${res.status}`)
+    throw new Error(await readApiError(res))
   }
   return res.json()
 }
@@ -46,8 +69,7 @@ async function fetchApi(path, { method = 'GET', body, signal } = {}) {
     signal,
   })
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text || `HTTP ${res.status}`)
+    throw new Error(await readApiError(res))
   }
   const contentType = res.headers.get('content-type') || ''
   if (contentType.includes('application/json')) return res.json()
@@ -919,12 +941,33 @@ export default function MateriasPrimas() {
     return rows.map((r) => ({ label: r.estatus, count: Number(r.articulos) }))
   }, [summary])
 
-  function onAdd() {
+  async function onAdd() {
     setError('')
     if (isLoadingMeta || !meta) {
       setError('Cargando catálogos, intenta de nuevo en unos segundos.')
       return
     }
+
+    const hasSubcats = Array.isArray(meta?.subcategorias) && meta.subcategorias.length > 0
+    if (!hasSubcats) {
+      try {
+        setIsLoadingMeta(true)
+        const fresh = await fetchJson(`/inventario/${KIND}/meta`)
+        setMeta(fresh)
+        const nowHasSubcats =
+          Array.isArray(fresh?.subcategorias) && fresh.subcategorias.length > 0
+        if (!nowHasSubcats) {
+          setError('No hay subcategorías en la base de datos.')
+          return
+        }
+      } catch (e) {
+        setError(e?.message || 'No se pudo cargar catálogos')
+        return
+      } finally {
+        setIsLoadingMeta(false)
+      }
+    }
+
     setModalOpen(true)
   }
 

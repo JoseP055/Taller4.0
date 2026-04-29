@@ -86,29 +86,29 @@ RETURNS bigint
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  codigo_categoria text;
+  v_codigo_categoria text;
   codigo_subcategoria text;
   prefix bigint;
   base bigint;
   max_code bigint;
   next_code bigint;
 BEGIN
-  codigo_categoria := inv_category_code(kind);
+  v_codigo_categoria := inv_category_code(inv_next_codigo.kind);
 
   SELECT sc.codigo_subcategoria
   INTO codigo_subcategoria
   FROM subcategoria sc
   JOIN categoria c ON c.id_categoria = sc.id_categoria
-  WHERE c.codigo_categoria = codigo_categoria
+  WHERE c.codigo_categoria = v_codigo_categoria
     AND c.activo = true
-    AND sc.id_subcategoria = id_subcategoria
+    AND sc.id_subcategoria = inv_next_codigo.id_subcategoria
     AND sc.activo = true;
 
   IF codigo_subcategoria IS NULL THEN
     RAISE EXCEPTION 'Subcategoría inválida';
   END IF;
 
-  prefix := (codigo_categoria || codigo_subcategoria)::bigint;
+  prefix := (v_codigo_categoria || codigo_subcategoria)::bigint;
   base := prefix * 10000;
 
   SELECT COALESCE(MAX(a.codigo_articulo), base)
