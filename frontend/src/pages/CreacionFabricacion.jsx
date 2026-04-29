@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../auth/AuthContext.jsx'
 
-const API_BASE =
-  import.meta.env.VITE_API_URL || `http://${globalThis.location?.hostname || 'localhost'}:8000`
+const API_BASE = (() => {
+  const env = String(import.meta.env.VITE_API_URL || '').trim()
+  const locHost = globalThis.location?.hostname || 'localhost'
+  const fallback = `http://${locHost}:8000`
+  if (!env) return fallback
+  try {
+    const u = new URL(env)
+    const envHost = u.hostname
+    const isLocalEnv = envHost === 'localhost' || envHost === '127.0.0.1'
+    const isLocalPage = locHost === 'localhost' || locHost === '127.0.0.1'
+    if (isLocalEnv && !isLocalPage) {
+      u.hostname = locHost
+      return u.toString().replace(/\/+$/, '')
+    }
+    return env.replace(/\/+$/, '')
+  } catch {
+    return env
+  }
+})()
 const ACCESS_TOKEN_KEY = 'ductos_inventory_supabase_access_token'
 
 function authHeaders() {
@@ -136,8 +153,86 @@ function ItemInfo({ title, item }) {
   )
 }
 
+function ItemPicker({
+  items,
+  selectedId,
+  onPick,
+  disabled,
+  emptyText,
+  showQty = true,
+}) {
+  const rows = Array.isArray(items) ? items : []
+  return (
+    <div
+      style={{
+        border: '1px solid rgba(0,0,0,0.12)',
+        borderRadius: 10,
+        overflow: 'hidden',
+        background: '#fff',
+      }}
+    >
+      <div style={{ maxHeight: 280, overflow: 'auto' }}>
+        {rows.length ? (
+          rows.map((x) => {
+            const isSelected = String(selectedId || '') === String(x.id)
+            return (
+              <div
+                key={x.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  padding: '10px 10px',
+                  borderBottom: '1px solid rgba(0,0,0,0.06)',
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {x.codigo} — {x.nombre}
+                  </div>
+                  <div
+                    className="muted"
+                    style={{
+                      fontSize: 12,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`${x.subcategoria}${x.medida ? ` • ${x.medida}` : ''} • ${x.ubicacion}${
+                      showQty ? ` • ${formatNumber(x.cantidad)} ${x.unidad}` : ''
+                    }`}
+                  >
+                    {x.subcategoria}
+                    {x.medida ? ` • ${x.medida}` : ''}
+                    {x.ubicacion ? ` • ${x.ubicacion}` : ''}
+                    {showQty ? ` • ${formatNumber(x.cantidad)} ${x.unidad}` : ''}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={isSelected ? 'primary' : 'btn'}
+                  onClick={() => onPick(String(x.id))}
+                  disabled={disabled}
+                >
+                  {isSelected ? 'Seleccionado' : 'Elegir'}
+                </button>
+              </div>
+            )
+          })
+        ) : (
+          <div className="muted" style={{ padding: 12, fontSize: 13 }}>
+            {emptyText || 'No hay resultados.'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function CreacionFabricacion() {
   const { role } = useAuth()
+  const isAdmin = role === 'admin'
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [subensambles, setSubensambles] = useState([])
@@ -156,6 +251,8 @@ export default function CreacionFabricacion() {
   const [assocError, setAssocError] = useState('')
   const [assocSubId, setAssocSubId] = useState('')
   const [assocPtId, setAssocPtId] = useState('')
+  const [assocSearchSub, setAssocSearchSub] = useState('')
+  const [assocSearchPt, setAssocSearchPt] = useState('')
   const [isAssocSubmitting, setIsAssocSubmitting] = useState(false)
 
   const [result, setResult] = useState(null)
@@ -235,15 +332,78 @@ export default function CreacionFabricacion() {
     return m
   }, [asociaciones])
 
+  const subOptionsForFabricacion = useMemo(() => {
+    if (isAdmin) return filteredSub
+    return filteredSub.filter((x) => assocBySub.has(String(x.id)))
+  }, [filteredSub, isAdmin, assocBySub])
+
+  const assocUsed = useMemo(() => {
+    const usedSubIds = new Set()
+    const usedPtIds = new Set()
+    for (const a of asociaciones) {
+      if (!a) continue
+      if (a.id_subensamble != null) usedSubIds.add(String(a.id_subensamble))
+      if (a.id_producto_terminado != null) usedPtIds.add(String(a.id_producto_terminado))
+    }
+    return { usedSubIds, usedPtIds }
+  }, [asociaciones])
+
+  const assocSubOptions = useMemo(() => {
+    if (!Array.isArray(subensambles) || !subensambles.length) return []
+    return subensambles.filter((x) => !assocUsed.usedSubIds.has(String(x.id)))
+  }, [subensambles, assocUsed])
+
+  const assocPtOptions = useMemo(() => {
+    if (!Array.isArray(productosTerminados) || !productosTerminados.length) return []
+    return productosTerminados.filter((x) => !assocUsed.usedPtIds.has(String(x.id)))
+  }, [productosTerminados, assocUsed])
+
+  const filteredAssocSubOptions = useMemo(() => {
+    const term = assocSearchSub.trim().toUpperCase()
+    if (!term) return assocSubOptions
+    return assocSubOptions.filter((x) => {
+      const hay = `${x.codigo} ${x.nombre} ${x.subcategoria} ${x.medida} ${x.ubicacion}`.toUpperCase()
+      return hay.includes(term)
+    })
+  }, [assocSubOptions, assocSearchSub])
+
+  const filteredAssocPtOptions = useMemo(() => {
+    const term = assocSearchPt.trim().toUpperCase()
+    if (!term) return assocPtOptions
+    return assocPtOptions.filter((x) => {
+      const hay = `${x.codigo} ${x.nombre} ${x.subcategoria} ${x.medida} ${x.ubicacion}`.toUpperCase()
+      return hay.includes(term)
+    })
+  }, [assocPtOptions, assocSearchPt])
+
+  useEffect(() => {
+    if (assocSubId && assocUsed.usedSubIds.has(String(assocSubId))) setAssocSubId('')
+    if (assocPtId && assocUsed.usedPtIds.has(String(assocPtId))) setAssocPtId('')
+  }, [assocSubId, assocPtId, assocUsed])
+
   const isPtLocked = useMemo(() => assocBySub.has(String(idSub)), [assocBySub, idSub])
 
   useEffect(() => {
-    if (!idSub) return
+    if (isAdmin) return
+    if (idSub && !assocBySub.has(String(idSub))) {
+      setIdSub('')
+      setIdPt('')
+    }
+  }, [idSub, assocBySub, isAdmin])
+
+  useEffect(() => {
+    if (!idSub) {
+      if (!isAdmin) setIdPt('')
+      return
+    }
     const assoc = assocBySub.get(String(idSub))
-    if (!assoc) return
+    if (!assoc) {
+      if (!isAdmin) setIdPt('')
+      return
+    }
     const mappedPt = String(assoc.id_producto_terminado)
     if (mappedPt && mappedPt !== String(idPt || '')) setIdPt(mappedPt)
-  }, [assocBySub, idSub, idPt])
+  }, [assocBySub, idSub, idPt, isAdmin])
 
   const qty = useMemo(() => {
     const raw = String(cantidad).trim()
@@ -267,6 +427,11 @@ export default function CreacionFabricacion() {
 
     return w
   }, [selectedSub, selectedPt, qty])
+
+  const hasAssociationForSelectedSub = useMemo(() => {
+    if (!selectedSub) return false
+    return assocBySub.has(String(selectedSub.id))
+  }, [assocBySub, selectedSub])
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -384,54 +549,128 @@ export default function CreacionFabricacion() {
           <div className="card-title">Convertir subensamble → producto terminado</div>
           <form className="form-grid" onSubmit={onSubmit}>
             <label className="field">
-              <span>Buscar subensamble</span>
-              <input
-                value={searchSub}
-                onChange={(e) => setSearchSub(e.target.value)}
-                placeholder="Código / nombre / subcategoría"
-              />
-            </label>
-
-            <label className="field">
               <span>Subensamble</span>
-              <select value={idSub} onChange={(e) => setIdSub(e.target.value)} disabled={isLoading}>
-                <option value="">Selecciona...</option>
-                {filteredSub.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.codigo} — {x.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field">
-              <span>Buscar producto terminado</span>
-              <input
-                value={searchPt}
-                onChange={(e) => setSearchPt(e.target.value)}
-                placeholder="Código / nombre / subcategoría"
-              />
+              <div style={{ display: 'flex', gap: 10 }}>
+                <input
+                  value={searchSub}
+                  onChange={(e) => setSearchSub(e.target.value)}
+                  placeholder="Buscar por código, nombre, subcategoría..."
+                  disabled={isLoading}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setIdSub('')
+                    setSearchSub('')
+                  }}
+                  disabled={isLoading || !idSub}
+                >
+                  Limpiar
+                </button>
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                {isLoading
+                  ? 'Cargando...'
+                  : !isAdmin
+                    ? `Mostrando ${subOptionsForFabricacion.length} subensambles (solo asociados).`
+                    : `Mostrando ${subOptionsForFabricacion.length} subensambles.`}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <ItemPicker
+                  items={subOptionsForFabricacion}
+                  selectedId={idSub}
+                  onPick={(next) => setIdSub(next)}
+                  disabled={isLoading}
+                  emptyText={
+                    !subensambles.length
+                      ? 'No hay subensambles registrados.'
+                      : !isAdmin
+                        ? 'No hay subensambles disponibles para fabricar (requieren asociación).'
+                        : 'No hay resultados con ese filtro.'
+                  }
+                />
+              </div>
             </label>
 
             <label className="field">
               <span>Producto terminado</span>
-              <select
-                value={idPt}
-                onChange={(e) => setIdPt(e.target.value)}
-                disabled={isLoading || isPtLocked}
-              >
-                <option value="">Selecciona...</option>
-                {filteredPt.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.codigo} — {x.nombre}
-                  </option>
-                ))}
-              </select>
-              {isPtLocked ? (
-                <div className="muted" style={{ fontSize: 12 }}>
-                  Asociado automáticamente por configuración.
-                </div>
-              ) : null}
+              {isAdmin ? (
+                <>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input
+                      value={searchPt}
+                      onChange={(e) => setSearchPt(e.target.value)}
+                      placeholder="Buscar por código, nombre, subcategoría..."
+                      disabled={isLoading || isPtLocked}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setIdPt('')
+                        setSearchPt('')
+                      }}
+                      disabled={isLoading || isPtLocked || !idPt}
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                    {isPtLocked
+                      ? 'Asociado automáticamente por configuración.'
+                      : isLoading
+                        ? 'Cargando...'
+                        : `Mostrando ${filteredPt.length} productos.`}
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <ItemPicker
+                      items={filteredPt}
+                      selectedId={idPt}
+                      onPick={(next) => setIdPt(next)}
+                      disabled={isLoading || isPtLocked}
+                      emptyText={
+                        !productosTerminados.length
+                          ? 'No hay productos terminados registrados.'
+                          : 'No hay resultados con ese filtro.'
+                      }
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      border: '1px solid rgba(0,0,0,0.12)',
+                      borderRadius: 10,
+                      padding: 12,
+                      background: '#fff',
+                    }}
+                  >
+                    {selectedPt ? (
+                      <>
+                        <div className="mono">
+                          {selectedPt.codigo} — {selectedPt.nombre}
+                        </div>
+                        <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                          {selectedPt.subcategoria}
+                          {selectedPt.medida ? ` • ${selectedPt.medida}` : ''}
+                          {selectedPt.ubicacion ? ` • ${selectedPt.ubicacion}` : ''}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        Selecciona un subensamble para que se asigne automáticamente el producto.
+                      </div>
+                    )}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                    Asociado automáticamente por configuración.
+                  </div>
+                </>
+              )}
             </label>
 
             <label className="field">
@@ -474,7 +713,11 @@ export default function CreacionFabricacion() {
             ) : null}
 
             <div className="modal-actions" style={{ gridColumn: '1 / -1' }}>
-              <button className="primary" type="submit" disabled={isLoading || isSubmitting}>
+              <button
+                className="primary"
+                type="submit"
+                disabled={isLoading || isSubmitting || (!isAdmin && !hasAssociationForSelectedSub)}
+              >
                 {isSubmitting ? 'Procesando...' : 'Registrar fabricación'}
               </button>
               <button
@@ -487,43 +730,102 @@ export default function CreacionFabricacion() {
               </button>
             </div>
           </form>
+          {!isAdmin && idSub && !hasAssociationForSelectedSub ? (
+            <div className="form-warn" style={{ marginTop: 12 }}>
+              No hay una asociación configurada para este subensamble. Contacta a un administrador.
+            </div>
+          ) : null}
         </div>
 
-        {role === 'admin' ? (
+        {isAdmin ? (
           <div className="card">
             <div className="card-title">Preconfiguración de asociaciones</div>
             {assocError ? <div className="form-error">{assocError}</div> : null}
             <form className="form-grid" onSubmit={onSaveAssoc}>
               <label className="field">
                 <span>Subensamble</span>
-                <select
-                  value={assocSubId}
-                  onChange={(e) => setAssocSubId(e.target.value)}
-                  disabled={isLoading || isAssocSubmitting}
-                >
-                  <option value="">Selecciona...</option>
-                  {subensambles.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.codigo} — {x.nombre}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <input
+                    value={assocSearchSub}
+                    onChange={(e) => setAssocSearchSub(e.target.value)}
+                    placeholder="Buscar subensamble..."
+                    disabled={isLoading || isAssocSubmitting}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setAssocSubId('')
+                      setAssocSearchSub('')
+                    }}
+                    disabled={isLoading || isAssocSubmitting || !assocSubId}
+                  >
+                    Limpiar
+                  </button>
+                </div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                  {isLoading ? 'Cargando...' : `Disponibles: ${filteredAssocSubOptions.length}`}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <ItemPicker
+                    items={filteredAssocSubOptions}
+                    selectedId={assocSubId}
+                    onPick={(next) => setAssocSubId(next)}
+                    disabled={isLoading || isAssocSubmitting}
+                    emptyText={
+                      !subensambles.length
+                        ? 'No hay subensambles registrados.'
+                        : !assocSubOptions.length
+                          ? 'No hay subensambles disponibles (ya están asociados).'
+                          : 'No hay resultados con ese filtro.'
+                    }
+                    showQty={false}
+                  />
+                </div>
               </label>
 
               <label className="field">
                 <span>Producto terminado</span>
-                <select
-                  value={assocPtId}
-                  onChange={(e) => setAssocPtId(e.target.value)}
-                  disabled={isLoading || isAssocSubmitting}
-                >
-                  <option value="">Selecciona...</option>
-                  {productosTerminados.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.codigo} — {x.nombre}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <input
+                    value={assocSearchPt}
+                    onChange={(e) => setAssocSearchPt(e.target.value)}
+                    placeholder="Buscar producto terminado..."
+                    disabled={isLoading || isAssocSubmitting}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setAssocPtId('')
+                      setAssocSearchPt('')
+                    }}
+                    disabled={isLoading || isAssocSubmitting || !assocPtId}
+                  >
+                    Limpiar
+                  </button>
+                </div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                  {isLoading ? 'Cargando...' : `Disponibles: ${filteredAssocPtOptions.length}`}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <ItemPicker
+                    items={filteredAssocPtOptions}
+                    selectedId={assocPtId}
+                    onPick={(next) => setAssocPtId(next)}
+                    disabled={isLoading || isAssocSubmitting}
+                    emptyText={
+                      !productosTerminados.length
+                        ? 'No hay productos terminados registrados.'
+                        : !assocPtOptions.length
+                          ? 'No hay productos terminados disponibles (ya están asociados).'
+                          : 'No hay resultados con ese filtro.'
+                    }
+                    showQty={false}
+                  />
+                </div>
               </label>
 
               <div className="modal-actions" style={{ gridColumn: '1 / -1' }}>

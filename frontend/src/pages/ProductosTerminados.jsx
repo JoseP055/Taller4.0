@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
 
-const API_BASE =
-  import.meta.env.VITE_API_URL || `http://${globalThis.location?.hostname || 'localhost'}:8000`
+const API_BASE = (() => {
+  const env = String(import.meta.env.VITE_API_URL || '').trim()
+  const locHost = globalThis.location?.hostname || 'localhost'
+  const fallback = `http://${locHost}:8000`
+  if (!env) return fallback
+  try {
+    const u = new URL(env)
+    const envHost = u.hostname
+    const isLocalEnv = envHost === 'localhost' || envHost === '127.0.0.1'
+    const isLocalPage = locHost === 'localhost' || locHost === '127.0.0.1'
+    if (isLocalEnv && !isLocalPage) {
+      u.hostname = locHost
+      return u.toString().replace(/\/+$/, '')
+    }
+    return env.replace(/\/+$/, '')
+  } catch {
+    return env
+  }
+})()
 const ACCESS_TOKEN_KEY = 'ductos_inventory_supabase_access_token'
 
 function authHeaders() {

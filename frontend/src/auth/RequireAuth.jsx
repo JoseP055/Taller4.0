@@ -26,6 +26,38 @@ export default function RequireAuth() {
   }
 
   if (!appUser) {
+    if (authError) {
+      return (
+        <section className="page">
+          <header className="page-header">
+            <h2>Acceso pendiente</h2>
+          </header>
+          <div className="page-body">
+            <div className="card">
+              <p>Tu usuario está pendiente de aprobación.</p>
+              <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+                {email ? `Correo: ${email}` : ''}
+              </p>
+              <p className="muted" style={{ fontSize: 13 }}>
+                Estado: SIN REGISTRO
+              </p>
+              <div className="form-error" style={{ marginTop: 10 }}>
+                {authError}
+              </div>
+              <div className="modal-actions">
+                <button className="primary" type="button" onClick={refreshMe}>
+                  Reintentar
+                </button>
+                <button className="btn" type="button" onClick={logout}>
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )
+    }
+
     return (
       <section className="page">
         <header className="page-header">

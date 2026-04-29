@@ -129,7 +129,8 @@ CREATE TABLE IF NOT EXISTS fabricacion_asociacion (
   id_producto_terminado integer NOT NULL REFERENCES articulo(id_articulo),
   activa boolean NOT NULL DEFAULT true,
   fecha_creacion timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT uq_fabricacion_asociacion_sub UNIQUE (id_subensamble)
+  CONSTRAINT uq_fabricacion_asociacion_sub UNIQUE (id_subensamble),
+  CONSTRAINT uq_fabricacion_asociacion_pt UNIQUE (id_producto_terminado)
 );
 
 CREATE TABLE IF NOT EXISTS app_user (
@@ -267,6 +268,23 @@ CREATE INDEX IF NOT EXISTS idx_asig_herr_id_colaborador ON asignacion_herramient
 CREATE INDEX IF NOT EXISTS idx_uso_maquina_id_maquina ON uso_maquina(id_maquina);
 CREATE INDEX IF NOT EXISTS idx_fab_asoc_id_pt ON fabricacion_asociacion(id_producto_terminado);
 CREATE INDEX IF NOT EXISTS idx_app_user_active_role ON app_user(active, role);
+WITH ranked AS (
+  SELECT
+    fa.id_asociacion,
+    ROW_NUMBER() OVER (
+      PARTITION BY fa.id_producto_terminado
+      ORDER BY fa.fecha_creacion DESC, fa.id_asociacion DESC
+    ) AS rn
+  FROM fabricacion_asociacion fa
+  WHERE fa.activa = true
+)
+UPDATE fabricacion_asociacion fa
+SET activa = false
+WHERE fa.id_asociacion IN (SELECT r.id_asociacion FROM ranked r WHERE r.rn > 1);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fabricacion_asociacion_pt_active_unique
+ON fabricacion_asociacion(id_producto_terminado)
+WHERE activa = true;
 
 INSERT INTO usuario (username, password_hash)
 VALUES ('admin', 'admin')

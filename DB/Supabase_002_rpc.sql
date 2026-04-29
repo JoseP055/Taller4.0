@@ -630,6 +630,8 @@ AS $$
 DECLARE
   sub_cat_id integer;
   pt_cat_id integer;
+  existing_pt integer;
+  existing_sub integer;
 BEGIN
   SELECT id_categoria INTO sub_cat_id FROM categoria WHERE codigo_categoria = '30' AND activo = true;
   SELECT id_categoria INTO pt_cat_id FROM categoria WHERE codigo_categoria = '40' AND activo = true;
@@ -647,11 +649,42 @@ BEGIN
     RAISE EXCEPTION 'Producto terminado inválido';
   END IF;
 
-  INSERT INTO fabricacion_asociacion (id_subensamble, id_producto_terminado, activa)
-  VALUES (inv_assoc_upsert.id_subensamble, inv_assoc_upsert.id_producto_terminado, true)
-  ON CONFLICT ON CONSTRAINT uq_fabricacion_asociacion_sub DO UPDATE SET
-    id_producto_terminado = EXCLUDED.id_producto_terminado,
-    activa = true;
+  SELECT fa.id_producto_terminado
+  INTO existing_pt
+  FROM fabricacion_asociacion fa
+  WHERE fa.id_subensamble = inv_assoc_upsert.id_subensamble
+  LIMIT 1;
+
+  IF existing_pt IS NOT NULL THEN
+    IF existing_pt <> inv_assoc_upsert.id_producto_terminado THEN
+      RAISE EXCEPTION 'Este subensamble ya está asociado a otro producto terminado';
+    END IF;
+
+    UPDATE fabricacion_asociacion
+    SET activa = true
+    WHERE fabricacion_asociacion.id_subensamble = inv_assoc_upsert.id_subensamble;
+
+    RETURN jsonb_build_object('ok', true);
+  END IF;
+
+  SELECT fa.id_subensamble
+  INTO existing_sub
+  FROM fabricacion_asociacion fa
+  WHERE fa.id_producto_terminado = inv_assoc_upsert.id_producto_terminado
+    AND fa.activa = true
+  LIMIT 1;
+
+  IF existing_sub IS NOT NULL AND existing_sub <> inv_assoc_upsert.id_subensamble THEN
+    RAISE EXCEPTION 'Este producto terminado ya está asociado a otro subensamble';
+  END IF;
+
+  BEGIN
+    INSERT INTO fabricacion_asociacion (id_subensamble, id_producto_terminado, activa)
+    VALUES (inv_assoc_upsert.id_subensamble, inv_assoc_upsert.id_producto_terminado, true);
+  EXCEPTION
+    WHEN unique_violation THEN
+      RAISE EXCEPTION 'Este producto terminado ya está asociado a otro subensamble';
+  END;
 
   RETURN jsonb_build_object('ok', true);
 END;
