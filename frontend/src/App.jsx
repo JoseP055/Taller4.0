@@ -50,6 +50,15 @@ function App() {
           />
 
           <Route
+            path="logistica/creacion-fabricacion"
+            element={<SimplePage title="Creación/Fabricación" />}
+          />
+          <Route
+            path="logistica/movimientos"
+            element={<SimplePage title="Movimientos" />}
+          />
+
+          <Route
             path="configuracion"
             element={<SimplePage title="Configuración" />}
           />

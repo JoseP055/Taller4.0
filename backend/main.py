@@ -1,6 +1,9 @@
 import os
+import json
 import time
 from datetime import datetime
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import pyodbc
 from fastapi import FastAPI, HTTPException, Query
@@ -63,6 +66,57 @@ def _candidate_servers(raw_server: str | None) -> list[str]:
 
 
 _RESOLVED_CONN_STR: str | None = None
+
+
+def _supabase_url() -> str | None:
+  url = os.environ.get('SUPABASE_URL')
+  if url and url.strip():
+    return url.strip().rstrip('/')
+  return None
+
+
+def _supabase_anon_key() -> str | None:
+  key = os.environ.get('SUPABASE_ANON_KEY') or os.environ.get('SUPABASE_KEY')
+  if key and key.strip():
+    return key.strip()
+  return None
+
+
+def _supabase_enabled() -> bool:
+  return bool(_supabase_url() and _supabase_anon_key())
+
+
+def _supabase_rpc(function_name: str, payload: dict):
+  base = _supabase_url()
+  key = _supabase_anon_key()
+  if not base or not key:
+    raise HTTPException(status_code=500, detail='Supabase no configurado')
+
+  url = f'{base}/rest/v1/rpc/{function_name}'
+  body = json.dumps(payload).encode('utf-8')
+  req = Request(
+    url,
+    data=body,
+    method='POST',
+    headers={
+      'Content-Type': 'application/json',
+      'apikey': key,
+      'Authorization': f'Bearer {key}',
+    },
+  )
+
+  try:
+    with urlopen(req, timeout=10) as res:
+      raw = res.read().decode('utf-8') if res else ''
+      if not raw:
+        return None
+      return json.loads(raw)
+  except HTTPError as e:
+    raw = e.read().decode('utf-8') if hasattr(e, 'read') else ''
+    detail = raw or str(e)
+    raise HTTPException(status_code=500, detail=detail) from e
+  except URLError as e:
+    raise HTTPException(status_code=500, detail=f'Error de red Supabase: {e}') from e
 
 
 def _connect():
@@ -165,18 +219,28 @@ app.add_middleware(
 
 @app.get('/health')
 def health():
+  if _supabase_enabled():
+    try:
+      data = _supabase_rpc('inv_ping', {})
+      return {'ok': True, 'source': 'supabase', 'ping': data}
+    except Exception as e:
+      return {'ok': False, 'source': 'supabase', 'error': str(e)}
+
   try:
     with _connect() as conn:
       cur = conn.cursor()
       cur.execute('SELECT 1')
       cur.fetchone()
-    return {'ok': True, 'timestamp': datetime.utcnow().isoformat() + 'Z'}
+    return {'ok': True, 'source': 'sqlserver', 'timestamp': datetime.utcnow().isoformat() + 'Z'}
   except Exception as e:
-    return {'ok': False, 'error': str(e)}
+    return {'ok': False, 'source': 'sqlserver', 'error': str(e)}
 
 
 @app.get('/inventario/{kind}/summary')
 def inventory_summary(kind: str):
+  if _supabase_enabled():
+    return _supabase_rpc('inv_summary', {'kind': kind})
+
   category = _category_code(kind)
   location_code = _default_location_code(kind)
 
@@ -306,6 +370,18 @@ def inventory_items(
   limit: int = Query(50, ge=1, le=200),
   offset: int = Query(0, ge=0),
 ):
+  if _supabase_enabled():
+    return _supabase_rpc(
+      'inv_items',
+      {
+        'kind': kind,
+        'search': search,
+        'estatus': estatus,
+        'lim': limit,
+        'off': offset,
+      },
+    )
+
   category = _category_code(kind)
   location_code = _default_location_code(kind)
 
@@ -365,6 +441,9 @@ def inventory_items(
 
 @app.get('/inventario/{kind}/meta')
 def inventory_meta(kind: str):
+  if _supabase_enabled():
+    return _supabase_rpc('inv_meta', {'kind': kind})
+
   category = _category_code(kind)
 
   subcategorias = _fetch_all(
@@ -498,6 +577,13 @@ def _next_codigo_articulo(conn, *, codigo_categoria: str, codigo_subcategoria: s
 
 @app.get('/inventario/{kind}/next-codigo')
 def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1)):
+  if _supabase_enabled():
+    codigo_articulo = _supabase_rpc(
+      'inv_next_codigo',
+      {'kind': kind, 'id_subcategoria': id_subcategoria},
+    )
+    return {'codigo_articulo': codigo_articulo}
+
   codigo_categoria = _category_code(kind)
 
   try:
@@ -521,6 +607,25 @@ def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1)):
 
 @app.post('/inventario/{kind}/items')
 def create_inventory_item(kind: str, payload: CreateInventoryItem):
+  if _supabase_enabled():
+    return _supabase_rpc(
+      'inv_create_item',
+      {
+        'kind': kind,
+        'codigo_sap': payload.codigo_sap,
+        'id_subcategoria': payload.id_subcategoria,
+        'nombre_base': payload.nombre_base,
+        'descripcion': payload.descripcion,
+        'dimension_principal': payload.dimension_principal,
+        'detalle_adicional': payload.detalle_adicional,
+        'unidad_medida': payload.unidad_medida,
+        'cantidad_actual': payload.cantidad_actual,
+        'minimo': payload.minimo,
+        'maximo': payload.maximo,
+        'punto_reorden': payload.punto_reorden,
+      },
+    )
+
   codigo_categoria = _category_code(kind)
   ubicacion_codigo = _default_location_code(kind)
 
@@ -656,6 +761,18 @@ def create_inventory_item(kind: str, payload: CreateInventoryItem):
 
 @app.patch('/inventario/{kind}/items/{id_articulo}')
 def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryItem):
+  if _supabase_enabled():
+    return _supabase_rpc(
+      'inv_update_item',
+      {
+        'kind': kind,
+        'id_articulo': id_articulo,
+        'nombre_base': payload.nombre_base,
+        'unidad_medida': payload.unidad_medida,
+        'dimension_principal': payload.dimension_principal,
+      },
+    )
+
   codigo_categoria = _category_code(kind)
 
   try:

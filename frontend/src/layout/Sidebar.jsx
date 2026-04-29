@@ -70,6 +70,21 @@ export default function Sidebar() {
             </NavLink>
           </div>
         </details>
+
+        <details className="nav-group" open>
+          <summary className="nav-group-title">Logística</summary>
+          <div className="nav-group-items">
+            <NavLink
+              to="/app/logistica/creacion-fabricacion"
+              className={linkClassName}
+            >
+              Creación/Fabricación
+            </NavLink>
+            <NavLink to="/app/logistica/movimientos" className={linkClassName}>
+              Movimientos
+            </NavLink>
+          </div>
+        </details>
       </nav>
 
       <div className="sidebar-footer">

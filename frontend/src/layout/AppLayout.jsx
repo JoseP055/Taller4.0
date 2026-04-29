@@ -11,6 +11,8 @@ const TITLES_BY_PATH = [
   { prefix: '/app/recursos/herramientas', title: 'Herramientas' },
   { prefix: '/app/recursos/suministros', title: 'Suministros' },
   { prefix: '/app/recursos/maquinaria', title: 'Maquinaria' },
+  { prefix: '/app/logistica/creacion-fabricacion', title: 'Creación/Fabricación' },
+  { prefix: '/app/logistica/movimientos', title: 'Movimientos' },
   { prefix: '/app/configuracion', title: 'Configuración' },
 ]
 

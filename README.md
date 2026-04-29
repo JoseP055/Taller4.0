@@ -1,6 +1,6 @@
 # Taller4.0 — Sistema de Inventario (Ductos)
 
-Frontend en React + Backend en Python (FastAPI) conectado a SQL Server (vía ODBC).
+Frontend en React + Backend en Python (FastAPI) conectado a SQL Server (vía ODBC) o a Supabase (Postgres) vía RPC.
 
 ## Requisitos
 
@@ -22,6 +22,19 @@ Frontend en React + Backend en Python (FastAPI) conectado a SQL Server (vía ODB
 - `CONSUMIBLES` (Área de Consumibles)
 - `SUBENSAMBLE` (Área de Subensambles)
 
+## Base de Datos (Supabase)
+
+1) Crea un proyecto en Supabase y abre el SQL Editor.
+2) Ejecuta estos scripts (en este orden):
+
+- [DB/Supabase_001_schema_seed.sql](./DB/Supabase_001_schema_seed.sql)
+- [DB/Supabase_002_rpc.sql](./DB/Supabase_002_rpc.sql)
+
+3) Configura el backend para usar Supabase con variables de entorno:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
 ## Backend (FastAPI)
 
 ### Instalación
@@ -41,6 +54,14 @@ El backend se configura por variables de entorno:
 - `DB_DATABASE` (por defecto: `InventarioTaller`)
 - `DB_USER` y `DB_PASSWORD` (solo si usas SQL Auth)
 - `DB_CONN_STR` (opcional, string completo de conexión; si lo defines, tiene prioridad)
+
+O usando Supabase (si defines `SUPABASE_URL` + `SUPABASE_ANON_KEY`, el backend usará Supabase):
+
+```powershell
+$env:SUPABASE_URL="https://TU_PROYECTO.supabase.co"
+$env:SUPABASE_ANON_KEY="TU_ANON_KEY"
+python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
 
 Ejemplo (Windows Auth):
 
@@ -114,4 +135,3 @@ git branch -M main
 git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
 git push -u origin main
 ```
-
