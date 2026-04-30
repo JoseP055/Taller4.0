@@ -574,6 +574,36 @@ export default function CreacionFabricacion() {
     return w
   }, [selectedSub, selectedPt, qty])
 
+  const safeQtyInfo = useMemo(() => {
+    if (!isZebra) return null
+    if (!selectedSub || !selectedPt) return null
+
+    const subQty = asNumber(selectedSub.cantidad, 0)
+    const subMin = asNumber(selectedSub.minStock, 0)
+    const ptQty = asNumber(selectedPt.cantidad, 0)
+    const ptMin = asNumber(selectedPt.minStock, 0)
+    const ptMax = asNumber(selectedPt.maxStock, 0)
+
+    const maxByAvailability = subQty
+    const maxBySubMin = subQty - subMin
+    const maxByPtMax = ptMax > 0 ? ptMax - ptQty : Number.POSITIVE_INFINITY
+
+    const maxSafeRaw = Math.min(maxByAvailability, maxBySubMin, maxByPtMax)
+    const maxSafe = Number.isFinite(maxSafeRaw) ? Math.max(maxSafeRaw, 0) : 0
+
+    const minByPtMin = ptMin > 0 ? ptMin - ptQty : 0
+    const minSafe = Math.max(minByPtMin, 0)
+
+    const hasSafeRange = maxSafe > 0 && maxSafe >= minSafe
+
+    return {
+      hasSafeRange,
+      minSafe,
+      maxSafe,
+      ptNeedsMin: ptMin > 0 && ptQty < ptMin,
+    }
+  }, [isZebra, selectedSub, selectedPt])
+
   const hasAssociationForSelectedSub = useMemo(() => {
     if (!selectedSub) return false
     return assocBySub.has(String(selectedSub.id))
@@ -862,6 +892,30 @@ export default function CreacionFabricacion() {
 
             <label className="field">
               <span>Cantidad a fabricar</span>
+              {safeQtyInfo ? (
+                <div
+                  className="muted"
+                  style={{
+                    marginTop: 6,
+                    marginBottom: 6,
+                    padding: '8px 10px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    background: 'var(--panel-2)',
+                    fontSize: 12,
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {safeQtyInfo.hasSafeRange ? (
+                    <>
+                      Sin alertas: mín {safeQtyInfo.ptNeedsMin ? formatNumber(safeQtyInfo.minSafe) : '>0'} • máx{' '}
+                      {formatNumber(safeQtyInfo.maxSafe)}
+                    </>
+                  ) : (
+                    <>Sin rango sin alertas para fabricar con los niveles actuales.</>
+                  )}
+                </div>
+              ) : null}
               <input
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}

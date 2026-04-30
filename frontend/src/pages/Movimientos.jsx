@@ -157,6 +157,8 @@ function normalizeItems(data) {
     medida: x.medida ?? '',
     cantidad: asNumber(x.cantidad, 0),
     unidad: x.unidad ?? '',
+    minStock: asNumber(x.min_stock, 0),
+    maxStock: asNumber(x.max_stock, 0),
     ubicacion: x.ubicacion ?? '',
   }))
 }
@@ -396,6 +398,34 @@ export default function Movimientos() {
   const stockActual = useMemo(() => asNumber(estado?.stock?.cantidad, NaN), [estado])
   const proyectoActual = useMemo(() => asNumber(estado?.proyecto?.cantidad, NaN), [estado])
 
+  const safeMoveInfo = useMemo(() => {
+    if (!isZebra) return null
+    if (!selected) return null
+    if (isLoadingEstado) return null
+    if (!estado || !estado.ok) return null
+    if (!Number.isFinite(stockActual) || !Number.isFinite(proyectoActual)) return null
+
+    const minStock = asNumber(selected.minStock, 0)
+    const maxStock = asNumber(selected.maxStock, 0)
+    const hasMax = maxStock > 0
+
+    if (modo === 'SALIDA_PROYECTO') {
+      const lowerByOverMax = hasMax ? Math.max(stockActual - maxStock, 0) : 0
+      const upperByMin = Math.max(stockActual - minStock, 0)
+      const maxSafe = Math.min(stockActual, upperByMin)
+      const minSafe = lowerByOverMax
+      const hasSafeRange = maxSafe > 0 && maxSafe >= minSafe
+      return { hasSafeRange, minSafe, maxSafe }
+    }
+
+    const lowerByMin = Math.max(minStock - stockActual, 0)
+    const upperByMax = hasMax ? Math.max(maxStock - stockActual, 0) : proyectoActual
+    const maxSafe = Math.min(proyectoActual, upperByMax)
+    const minSafe = lowerByMin
+    const hasSafeRange = maxSafe > 0 && maxSafe >= minSafe
+    return { hasSafeRange, minSafe, maxSafe }
+  }, [isZebra, selected, isLoadingEstado, estado, stockActual, proyectoActual, modo])
+
   const feasibility = useMemo(() => {
     if (!selected) return { ok: false, msg: 'Selecciona un producto terminado.' }
     if (qty === null) return { ok: false, msg: 'Ingresa una cantidad.' }
@@ -621,6 +651,30 @@ export default function Movimientos() {
 
             <label className="field">
               <span>Cantidad</span>
+              {safeMoveInfo ? (
+                <div
+                  className="muted"
+                  style={{
+                    marginTop: 6,
+                    marginBottom: 6,
+                    padding: '8px 10px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    background: 'var(--panel-2)',
+                    fontSize: 12,
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {safeMoveInfo.hasSafeRange ? (
+                    <>
+                      Sin alertas: mín {safeMoveInfo.minSafe > 0 ? formatNumber(safeMoveInfo.minSafe) : '>0'} • máx{' '}
+                      {formatNumber(safeMoveInfo.maxSafe)}
+                    </>
+                  ) : (
+                    <>Sin rango sin alertas para este movimiento con los niveles actuales.</>
+                  )}
+                </div>
+              ) : null}
               <input
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}
