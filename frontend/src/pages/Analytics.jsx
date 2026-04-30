@@ -115,6 +115,56 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+function applyStatusFilter(rows, status) {
+  let out = rows
+  if (status === 'below_min') out = out.filter((x) => x.minStock > 0 && x.cantidad < x.minStock)
+  if (status === 'over_max') out = out.filter((x) => x.maxStock > 0 && x.cantidad > x.maxStock)
+  if (status === 'zero') out = out.filter((x) => asNumber(x.cantidad, 0) === 0)
+  if (status === 'healthy')
+    out = out.filter(
+      (x) =>
+        !(x.minStock > 0 && x.cantidad < x.minStock) &&
+        !(x.maxStock > 0 && x.cantidad > x.maxStock) &&
+        asNumber(x.cantidad, 0) !== 0,
+    )
+  return out
+}
+
+function applyDimFilter(rows, dim) {
+  const d = String(dim || '').trim().toUpperCase()
+  if (!d) return rows
+  return rows.filter((x) => String(x.medida || '').toUpperCase().includes(d))
+}
+
+function applyKindsFilter(rows, kinds) {
+  const ks = Array.isArray(kinds) ? kinds : []
+  if (!ks.length) return rows
+  return rows.filter((x) => ks.includes(x.kind))
+}
+
+function KpiCard({ label, value, badge, note, onClick }) {
+  const Comp = onClick ? 'button' : 'div'
+  return (
+    <Comp
+      className="kpi-card"
+      type={onClick ? 'button' : undefined}
+      onClick={onClick || undefined}
+      style={{
+        textAlign: 'left',
+        cursor: onClick ? 'pointer' : 'default',
+        background: 'var(--panel)',
+      }}
+    >
+      <div className="kpi-top">
+        <div className="kpi-label">{label}</div>
+        {badge ? <div className="kpi-badge">{badge}</div> : null}
+      </div>
+      <div className="kpi-value">{value}</div>
+      {note ? <div className="kpi-note">{note}</div> : null}
+    </Comp>
+  )
+}
+
 function normalizeItems(kind, data) {
   const rows = Array.isArray(data?.items) ? data.items : []
   return rows.map((x) => ({
@@ -257,6 +307,246 @@ function Bars({ title, series, onSelectLabel }) {
   )
 }
 
+function toRadians(deg) {
+  return (deg * Math.PI) / 180
+}
+
+function polar(cx, cy, r, angleDeg) {
+  const a = toRadians(angleDeg - 90)
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }
+}
+
+function pieSlicePath(cx, cy, r, startDeg, endDeg) {
+  const start = polar(cx, cy, r, startDeg)
+  const end = polar(cx, cy, r, endDeg)
+  const largeArc = endDeg - startDeg > 180 ? 1 : 0
+  return [
+    `M ${cx} ${cy}`,
+    `L ${start.x.toFixed(2)} ${start.y.toFixed(2)}`,
+    `A ${r} ${r} 0 ${largeArc} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`,
+    'Z',
+  ].join(' ')
+}
+
+function donutSlicePath(cx, cy, rOuter, rInner, startDeg, endDeg) {
+  const start = polar(cx, cy, rOuter, startDeg)
+  const end = polar(cx, cy, rOuter, endDeg)
+  const startInner = polar(cx, cy, rInner, endDeg)
+  const endInner = polar(cx, cy, rInner, startDeg)
+  const largeArc = endDeg - startDeg > 180 ? 1 : 0
+  return [
+    `M ${start.x.toFixed(2)} ${start.y.toFixed(2)}`,
+    `A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`,
+    `L ${startInner.x.toFixed(2)} ${startInner.y.toFixed(2)}`,
+    `A ${rInner} ${rInner} 0 ${largeArc} 0 ${endInner.x.toFixed(2)} ${endInner.y.toFixed(2)}`,
+    'Z',
+  ].join(' ')
+}
+
+function PieDonutChart({ title, series, variant = 'donut', onSelectLabel, centerLabel }) {
+  const palette = [
+    'rgba(30, 195, 167, 0.92)',
+    'rgba(126, 251, 110, 0.86)',
+    'rgba(245, 158, 11, 0.86)',
+    'rgba(239, 68, 68, 0.82)',
+    'rgba(96, 165, 250, 0.85)',
+    'rgba(167, 139, 250, 0.85)',
+    'rgba(244, 114, 182, 0.85)',
+    'rgba(148, 163, 184, 0.85)',
+  ]
+
+  const clean = useMemo(() => {
+    const rows = Array.isArray(series) ? series : []
+    return rows
+      .map((s, idx) => ({
+        label: String(s.label),
+        value: Math.max(asNumber(s.value, 0), 0),
+        color: s.color || palette[idx % palette.length],
+      }))
+      .filter((s) => s.value > 0)
+  }, [series])
+
+  const total = useMemo(() => clean.reduce((acc, s) => acc + s.value, 0) || 1, [clean])
+
+  const size = 260
+  const cx = size / 2
+  const cy = size / 2
+  const rOuter = 92
+  const isDonut = variant === 'donut'
+  const rInner = isDonut ? 56 : 0
+
+  const slices = useMemo(() => {
+    let angle = 0
+    return clean.map((s) => {
+      const span = (s.value / total) * 360
+      const start = angle
+      const end = angle + span
+      angle = end
+      const d = isDonut ? donutSlicePath(cx, cy, rOuter, rInner, start, end) : pieSlicePath(cx, cy, rOuter, start, end)
+      const pct = Math.round((s.value / total) * 100)
+      return { ...s, d, pct }
+    })
+  }, [clean, total, cx, cy, rOuter, rInner, isDonut])
+
+  return (
+    <div className="card">
+      <div className="card-title">{title}</div>
+      <div className="chart" style={{ display: 'grid', placeItems: 'center', marginTop: 8 }}>
+        <svg className="chart-svg" viewBox={`0 0 ${size} ${size}`} role="img" aria-label={title}>
+          <circle cx={cx} cy={cy} r={rOuter + 18} fill="var(--panel-2)" opacity="0.65" />
+          {slices.length ? (
+            slices.map((s) => (
+              <path
+                key={s.label}
+                d={s.d}
+                fill={s.color}
+                stroke="rgba(15, 23, 42, 0.28)"
+                strokeWidth="1"
+                onClick={onSelectLabel ? () => onSelectLabel(s.label) : undefined}
+                style={{ cursor: onSelectLabel ? 'pointer' : 'default' }}
+              >
+                <title>
+                  {s.label}: {formatNumber(s.value)} ({s.pct}%)
+                </title>
+              </path>
+            ))
+          ) : (
+            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fill="var(--muted)" fontSize="13">
+              Sin datos
+            </text>
+          )}
+          {isDonut ? <circle cx={cx} cy={cy} r={rInner - 8} fill="var(--panel)" opacity="0.9" /> : null}
+          {isDonut && centerLabel ? (
+            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fill="var(--text)" fontSize="14" fontWeight="800">
+              {centerLabel}
+            </text>
+          ) : null}
+        </svg>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+        {slices.map((s) => (
+          <button
+            key={`${s.label}-legend`}
+            type="button"
+            className="legend-btn"
+            onClick={onSelectLabel ? () => onSelectLabel(s.label) : undefined}
+            style={{ cursor: onSelectLabel ? 'pointer' : 'default' }}
+            title={`${s.label}: ${formatNumber(s.value)}`}
+          >
+            <span className="legend-swatch" style={{ background: s.color }} aria-hidden="true" />
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ColumnChart({ title, series, onSelectLabel, valueFormatter }) {
+  const width = 360
+  const height = 208
+  const padX = 16
+  const padTop = 24
+  const padBottom = 40
+  const innerW = width - padX * 2
+  const innerH = height - padTop - padBottom
+  const rows = Array.isArray(series) ? series : []
+  const max = useMemo(() => rows.reduce((m, r) => Math.max(m, asNumber(r.value, 0)), 0) || 1, [rows])
+
+  const barGap = 10
+  const barW = rows.length ? Math.max((innerW - barGap * (rows.length - 1)) / rows.length, 10) : 10
+
+  return (
+    <div className="card">
+      <div className="card-title">{title}</div>
+      <div className="chart" style={{ marginTop: 10 }}>
+        <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+          <rect x="0" y="0" width={width} height={height} rx="14" fill="var(--panel-2)" opacity="0.65" />
+          <line x1={padX} y1={padTop + innerH} x2={padX + innerW} y2={padTop + innerH} stroke="var(--border)" />
+          {rows.map((r, idx) => {
+            const v = asNumber(r.value, 0)
+            const h = v > 0 ? Math.max((v / max) * innerH, 2) : 0
+            const x = padX + idx * (barW + barGap)
+            const y = padTop + (innerH - h)
+            const fill = r.color || 'rgba(30, 195, 167, 0.85)'
+            const label = String(r.label)
+            const valueY = Math.max(y - 6, 14)
+            return (
+              <g key={label}>
+                <rect
+                  x={x}
+                  y={y}
+                  width={barW}
+                  height={h}
+                  rx="8"
+                  fill={fill}
+                  onClick={onSelectLabel ? () => onSelectLabel(label) : undefined}
+                  style={{ cursor: onSelectLabel ? 'pointer' : 'default' }}
+                >
+                  <title>
+                    {label}: {valueFormatter ? valueFormatter(v) : formatNumber(v)}
+                  </title>
+                </rect>
+                <text x={x + barW / 2} y={valueY} textAnchor="middle" fontSize="11" fill="var(--muted)">
+                  {valueFormatter ? valueFormatter(v) : formatNumber(v)}
+                </text>
+                <text x={x + barW / 2} y={padTop + innerH + 18} textAnchor="middle" fontSize="10" fill="var(--muted)">
+                  {label.length > 8 ? `${label.slice(0, 8)}…` : label}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+function Gauge({ title, value, max = 100, onClick, subtitle }) {
+  const width = 320
+  const height = 170
+  const cx = width / 2
+  const cy = 132
+  const r = 86
+  const pct = clamp((asNumber(value, 0) / Math.max(asNumber(max, 1), 1)) * 100, 0, 100)
+  const startDeg = 270
+  const endDeg = 450
+  const ang = startDeg + (pct / 100) * (endDeg - startDeg)
+  const bg = donutSlicePath(cx, cy, r, r - 16, startDeg, endDeg)
+  const fg = donutSlicePath(cx, cy, r, r - 16, startDeg, ang)
+  const needle = polar(cx, cy, r - 10, ang)
+
+  return (
+    <div className="card">
+      <div className="card-title">{title}</div>
+      <div className="chart" style={{ marginTop: 10 }}>
+        <svg
+          className="chart-svg"
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={title}
+          onClick={onClick || undefined}
+          style={{ cursor: onClick ? 'pointer' : 'default' }}
+        >
+          <rect x="0" y="0" width={width} height={height} rx="14" fill="var(--panel-2)" opacity="0.65" />
+          <path d={bg} fill="rgba(148, 163, 184, 0.22)" />
+          <path d={fg} fill="rgba(30, 195, 167, 0.88)" />
+          <line x1={cx} y1={cy} x2={needle.x} y2={needle.y} stroke="rgba(241,245,249,0.9)" strokeWidth="3" strokeLinecap="round" />
+          <circle cx={cx} cy={cy} r="6" fill="rgba(241,245,249,0.9)" />
+          <text x={cx} y={cy - 22} textAnchor="middle" fontSize="22" fontWeight="900" fill="var(--text)">
+            {formatNumber(Math.round(pct))}%
+          </text>
+          {subtitle ? (
+            <text x={cx} y={cy - 4} textAnchor="middle" fontSize="12" fill="var(--muted)">
+              {subtitle}
+            </text>
+          ) : null}
+        </svg>
+      </div>
+    </div>
+  )
+}
+
 function StackedBars({ title, rows, series, enabledMap, onToggleSeries, valueFormatter }) {
   const max = useMemo(() => {
     let m = 0
@@ -319,6 +609,181 @@ function StackedBars({ title, rows, series, enabledMap, onToggleSeries, valueFor
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+function clamp(n, min, max) {
+  return Math.min(Math.max(n, min), max)
+}
+
+function LineChart({ title, rows, series, enabledMap, onToggleSeries, valueFormatter }) {
+  const pointsBySeries = useMemo(() => {
+    const out = new Map()
+    const enabledSeries = series.filter((s) => enabledMap[s.key])
+    const ys = []
+    for (const s of enabledSeries) {
+      const pts = rows.map((r, idx) => ({
+        x: idx,
+        y: asNumber(r[s.key], 0),
+        label: r.label,
+      }))
+      for (const p of pts) ys.push(p.y)
+      out.set(s.key, pts)
+    }
+    const minY = ys.length ? Math.min(...ys) : 0
+    const maxY = ys.length ? Math.max(...ys) : 1
+    return { out, minY, maxY }
+  }, [rows, series, enabledMap])
+
+  const width = 320
+  const height = 160
+  const padX = 10
+  const padY = 14
+  const innerW = width - padX * 2
+  const innerH = height - padY * 2
+  const maxX = Math.max(rows.length - 1, 1)
+  const rangeY = Math.max(pointsBySeries.maxY - pointsBySeries.minY, 1)
+
+  const paths = useMemo(() => {
+    const enabledSeries = series.filter((s) => enabledMap[s.key])
+    return enabledSeries.map((s) => {
+      const pts = pointsBySeries.out.get(s.key) || []
+      const d = pts
+        .map((p, i) => {
+          const x = padX + (p.x / maxX) * innerW
+          const y = padY + (1 - (p.y - pointsBySeries.minY) / rangeY) * innerH
+          return `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+        })
+        .join(' ')
+      return { key: s.key, label: s.label, color: s.color, d }
+    })
+  }, [series, enabledMap, pointsBySeries, maxX, innerW, innerH, padX, padY, rangeY])
+
+  const lastLabels = useMemo(() => {
+    const n = rows.length
+    if (!n) return { left: '', right: '' }
+    return { left: rows[0].label, right: rows[n - 1].label }
+  }, [rows])
+
+  return (
+    <div className="card">
+      <div className="card-title">{title}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {series.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className="legend-btn"
+            onClick={() => onToggleSeries?.(s.key)}
+            style={{ opacity: enabledMap[s.key] ? 1 : 0.45 }}
+          >
+            <span className="legend-swatch" style={{ background: s.color }} aria-hidden="true" />
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <div className="chart" style={{ marginTop: 10 }}>
+        <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+          <rect x="0" y="0" width={width} height={height} rx="14" fill="var(--panel-2)" opacity="0.65" />
+          <line
+            x1={padX}
+            y1={padY + innerH}
+            x2={padX + innerW}
+            y2={padY + innerH}
+            stroke="var(--border)"
+          />
+          {paths.map((p) => (
+            <path key={p.key} d={p.d} fill="none" stroke={p.color} strokeWidth="2.5" strokeLinecap="round" />
+          ))}
+        </svg>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {lastLabels.left}
+          </div>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {lastLabels.right}
+          </div>
+        </div>
+        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          Rango: {valueFormatter(pointsBySeries.minY)} – {valueFormatter(pointsBySeries.maxY)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RadarChart({ title, metrics }) {
+  const size = 260
+  const cx = size / 2
+  const cy = size / 2
+  const r = 92
+  const levels = 4
+
+  const points = useMemo(() => {
+    const n = metrics.length || 1
+    return metrics.map((m, i) => {
+      const angle = -Math.PI / 2 + (i / n) * Math.PI * 2
+      const v = clamp(asNumber(m.value, 0), 0, 100) / 100
+      return {
+        ...m,
+        angle,
+        x: cx + Math.cos(angle) * r * v,
+        y: cy + Math.sin(angle) * r * v,
+        lx: cx + Math.cos(angle) * (r + 26),
+        ly: cy + Math.sin(angle) * (r + 26),
+      }
+    })
+  }, [metrics, cx, cy, r])
+
+  const polygon = useMemo(() => points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '), [points])
+
+  return (
+    <div className="card">
+      <div className="card-title">{title}</div>
+      <div className="chart" style={{ display: 'grid', placeItems: 'center', marginTop: 8 }}>
+        <svg className="chart-svg" viewBox={`0 0 ${size} ${size}`} role="img" aria-label={title}>
+          <circle cx={cx} cy={cy} r={r + 18} fill="var(--panel-2)" opacity="0.65" />
+          {Array.from({ length: levels }, (_, idx) => {
+            const rr = ((idx + 1) / levels) * r
+            const poly = points
+              .map((p, i) => {
+                const angle = -Math.PI / 2 + (i / points.length) * Math.PI * 2
+                const x = cx + Math.cos(angle) * rr
+                const y = cy + Math.sin(angle) * rr
+                return `${x.toFixed(1)},${y.toFixed(1)}`
+              })
+              .join(' ')
+            return <polygon key={idx} points={poly} fill="none" stroke="var(--border)" />
+          })}
+          {points.map((p, i) => {
+            const angle = -Math.PI / 2 + (i / points.length) * Math.PI * 2
+            const x = cx + Math.cos(angle) * r
+            const y = cy + Math.sin(angle) * r
+            return <line key={p.key} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--border)" />
+          })}
+          <polygon points={polygon} fill="rgba(30, 195, 167, 0.18)" stroke="rgba(30, 195, 167, 0.9)" strokeWidth="2" />
+          {points.map((p) => (
+            <circle key={`${p.key}-pt`} cx={p.x} cy={p.y} r="3.5" fill="rgba(126, 251, 110, 0.9)" />
+          ))}
+          {points.map((p) => (
+            <text
+              key={`${p.key}-lbl`}
+              x={p.lx}
+              y={p.ly}
+              fontSize="11"
+              fill="var(--muted)"
+              textAnchor={p.lx < cx ? 'end' : p.lx > cx ? 'start' : 'middle'}
+              dominantBaseline="middle"
+            >
+              {p.label}
+            </text>
+          ))}
+        </svg>
+        <div className="muted" style={{ fontSize: 12, marginTop: 10, textAlign: 'center' }}>
+          Escala 0–100 (más alto = mejor).
+        </div>
       </div>
     </div>
   )
@@ -400,14 +865,88 @@ function GroupModal({ group, onClose }) {
   )
 }
 
+function MovementsLogModal({ title, day, rows, isLoading, error, onClose }) {
+  const list = Array.isArray(rows) ? rows : []
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal" style={{ maxWidth: 1200 }}>
+        <div className="modal-head">
+          <div className="modal-title">{title}</div>
+          <button type="button" className="btn" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+        <div className="modal-body">
+          {day ? (
+            <div className="muted" style={{ fontSize: 12 }}>
+              Día: {day}
+            </div>
+          ) : null}
+          {error ? <div className="form-error">{error}</div> : null}
+          <div className="table-wrap">
+            <table className="table" style={{ minWidth: 1120 }}>
+              <thead>
+                <tr>
+                  <th>Hora</th>
+                  <th>Tipo</th>
+                  <th>Artículo</th>
+                  <th className="num">Cantidad</th>
+                  <th>Origen</th>
+                  <th>Destino</th>
+                  <th>Ref.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="empty">
+                      Cargando...
+                    </td>
+                  </tr>
+                ) : list.length ? (
+                  list.map((r) => (
+                    <tr key={r.id}>
+                      <td className="mono">{String(r.fecha_hora || '').slice(11, 16) || '-'}</td>
+                      <td className="mono">{r.tipo}</td>
+                      <td style={{ minWidth: 320 }}>
+                        <div className="mono">
+                          {r?.articulo?.codigo} — {r?.articulo?.nombre}
+                        </div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {r?.articulo?.medida ? `Medida: ${r.articulo.medida}` : 'Medida: NO POSEE'}
+                        </div>
+                      </td>
+                      <td className="num">{formatNumber(Math.round(asNumber(r.cantidad, 0)))}</td>
+                      <td className="mono">{r.origen || '-'}</td>
+                      <td className="mono">{r.destino || '-'}</td>
+                      <td
+                        className="mono"
+                        style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {r.referencia || ''}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="empty">
+                      Sin movimientos en ese día.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Analytics() {
-  const [kind, setKind] = useLocalStorageState('an:kind', 'productos-terminados')
-  const [search, setSearch] = useLocalStorageState('an:search', '')
+  const [kindsValue, setKindsValue] = useLocalStorageState('an:kind', ['productos-terminados'])
   const [dim, setDim] = useLocalStorageState('an:dim', '')
   const [status, setStatus] = useLocalStorageState('an:status', 'all')
-  const [qtyMin, setQtyMin] = useLocalStorageState('an:qtyMin', '')
-  const [qtyMax, setQtyMax] = useLocalStorageState('an:qtyMax', '')
-  const [sort, setSort] = useLocalStorageState('an:sort', 'cantidad')
   const [days, setDays] = useLocalStorageState('an:days', 30)
   const [movementEnabled, setMovementEnabled] = useLocalStorageState('an:movEnabled', {
     pt_salida_proy: true,
@@ -416,13 +955,18 @@ export default function Analytics() {
     fab_salida: true,
   })
   const [selectedGroupKey, setSelectedGroupKey] = useState('')
-  const [isFiltersOpen, setIsFiltersOpen] = useState(true)
+  const [viewTab, setViewTab] = useLocalStorageState('an:viewTab', 'resumen')
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [items, setItems] = useState([])
   const [daily, setDaily] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [selectedDay, setSelectedDay] = useState('')
+  const [isMovementsOpen, setIsMovementsOpen] = useState(false)
+  const [movementLogRows, setMovementLogRows] = useState([])
+  const [movementLogError, setMovementLogError] = useState('')
+  const [isLoadingMovementLog, setIsLoadingMovementLog] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -431,11 +975,16 @@ export default function Analytics() {
     setDaily(null)
 
     const qs = new URLSearchParams({ estatus: 'Todas', limit: '1000', offset: '0', search: '' })
+    const nextKinds = ['materias-primas', 'subensambles', 'productos-terminados']
 
     Promise.all([
-      fetchJson(`/inventario/${kind}/items?${qs.toString()}`, { signal: controller.signal }).then((d) =>
-        normalizeItems(kind, d),
-      ),
+      Promise.all(
+        nextKinds.map((k) =>
+          fetchJson(`/inventario/${k}/items?${qs.toString()}`, { signal: controller.signal }).then((d) =>
+            normalizeItems(k, d),
+          ),
+        ),
+      ).then((lists) => lists.flat()),
       fetchJson(`/analytics/movimientos/daily?days=${encodeURIComponent(String(days))}`, {
         signal: controller.signal,
       }).catch(() => null),
@@ -454,41 +1003,133 @@ export default function Analytics() {
       })
 
     return () => controller.abort()
-  }, [kind, days, refreshKey])
+  }, [days, refreshKey])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setMovementLogRows([])
+    setMovementLogError('')
+    if (!selectedDay) return () => controller.abort()
+
+    setIsLoadingMovementLog(true)
+    fetchJson(
+      `/analytics/movimientos/log?days=${encodeURIComponent(String(days))}&day=${encodeURIComponent(
+        String(selectedDay),
+      )}&limit=250`,
+      { signal: controller.signal },
+    )
+      .then((data) => {
+        const rows = Array.isArray(data?.rows) ? data.rows : []
+        setMovementLogRows(rows)
+        setMovementLogError('')
+      })
+      .catch((e) => {
+        if (controller.signal.aborted) return
+        setMovementLogRows([])
+        setMovementLogError(e?.message || 'No se pudo cargar movimientos del día')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingMovementLog(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedDay, days])
+
+  const kinds = useMemo(() => {
+    if (Array.isArray(kindsValue)) return kindsValue
+    const v = String(kindsValue || '').trim()
+    return [v || 'productos-terminados']
+  }, [kindsValue])
+
+  const itemsForStatusTotals = useMemo(() => {
+    return applyDimFilter(applyKindsFilter(items, kinds), dim)
+  }, [items, kinds, dim])
+
+  const itemsForKindTotals = useMemo(() => {
+    return applyStatusFilter(applyDimFilter(items, dim), status)
+  }, [items, dim, status])
+
+  const itemsForMeasureTotals = useMemo(() => {
+    return applyStatusFilter(applyKindsFilter(items, kinds), status)
+  }, [items, kinds, status])
 
   const filteredItems = useMemo(() => {
-    const term = String(search || '').trim().toUpperCase()
-    const d = String(dim || '').trim().toUpperCase()
-    const min = String(qtyMin || '').trim()
-    const max = String(qtyMax || '').trim()
-    const minN = min ? Number(min) : null
-    const maxN = max ? Number(max) : null
-
-    let rows = items
-    if (term) {
-      rows = rows.filter((x) => {
-        const hay = `${x.codigo} ${x.nombre} ${x.medida}`.toUpperCase()
-        return hay.includes(term)
-      })
-    }
-    if (d) rows = rows.filter((x) => String(x.medida || '').toUpperCase().includes(d))
-    if (status === 'below_min') rows = rows.filter((x) => x.minStock > 0 && x.cantidad < x.minStock)
-    if (status === 'over_max') rows = rows.filter((x) => x.maxStock > 0 && x.cantidad > x.maxStock)
-    if (status === 'zero') rows = rows.filter((x) => asNumber(x.cantidad, 0) === 0)
-    if (status === 'healthy')
-      rows = rows.filter((x) => !(x.minStock > 0 && x.cantidad < x.minStock) && !(x.maxStock > 0 && x.cantidad > x.maxStock))
-    if (minN !== null && Number.isFinite(minN)) rows = rows.filter((x) => x.cantidad >= minN)
-    if (maxN !== null && Number.isFinite(maxN)) rows = rows.filter((x) => x.cantidad <= maxN)
-    return rows
-  }, [items, search, dim, status, qtyMin, qtyMax])
+    return applyStatusFilter(itemsForStatusTotals, status)
+  }, [itemsForStatusTotals, status])
 
   const groups = useMemo(() => {
     const g = buildGroups(filteredItems)
-    if (sort === 'alertas') g.sort((a, b) => b.alerts - a.alerts || b.totalCantidad - a.totalCantidad)
-    else if (sort === 'sobremax') g.sort((a, b) => b.sobreMax - a.sobreMax || b.totalCantidad - a.totalCantidad)
-    else g.sort((a, b) => b.totalCantidad - a.totalCantidad)
+    g.sort((a, b) => b.totalCantidad - a.totalCantidad)
     return g
-  }, [filteredItems, sort])
+  }, [filteredItems])
+
+  const groupsNoStatus = useMemo(() => {
+    const g = buildGroups(itemsForStatusTotals)
+    g.sort((a, b) => b.totalCantidad - a.totalCantidad)
+    return g
+  }, [itemsForStatusTotals])
+
+  const kindTotals = useMemo(() => {
+    const base = ['materias-primas', 'subensambles', 'productos-terminados']
+    const totals = new Map(
+      base.map((k) => [
+        k,
+        {
+          kind: k,
+          items: 0,
+          qty: 0,
+        },
+      ]),
+    )
+    for (const it of itemsForKindTotals) {
+      const cur = totals.get(it.kind)
+      if (!cur) continue
+      cur.items += 1
+      cur.qty += asNumber(it.cantidad, 0)
+    }
+    const seriesQty = Array.from(totals.values()).map((t) => ({ label: kindLabel(t.kind), value: Math.round(t.qty) }))
+    const seriesItems = Array.from(totals.values()).map((t) => ({ label: kindLabel(t.kind), value: t.items }))
+    return { seriesQty, seriesItems }
+  }, [itemsForKindTotals])
+
+  const statusTotals = useMemo(() => {
+    const rows = itemsForStatusTotals
+    let below = 0
+    let over = 0
+    let zero = 0
+    let healthy = 0
+    for (const it of rows) {
+      const qty = asNumber(it.cantidad, 0)
+      const min = asNumber(it.minStock, 0)
+      const maxS = asNumber(it.maxStock, 0)
+      const isBelow = min > 0 && qty < min
+      const isOver = maxS > 0 && qty > maxS
+      const isZero = qty === 0
+      if (isBelow) below += 1
+      if (isOver) over += 1
+      if (isZero) zero += 1
+      if (!isBelow && !isOver && !isZero) healthy += 1
+    }
+    return [
+      { key: 'below_min', label: 'Bajo mínimo', value: below },
+      { key: 'over_max', label: 'Sobre máximo', value: over },
+      { key: 'zero', label: 'Cero stock', value: zero },
+      { key: 'healthy', label: 'Saludable', value: healthy },
+    ]
+  }, [itemsForStatusTotals])
+
+  const topMeasures = useMemo(() => {
+    const by = new Map()
+    for (const it of itemsForMeasureTotals) {
+      const m = String(it.medida || 'NO POSEE').trim() || 'NO POSEE'
+      const cur = by.get(m) || { m, qty: 0 }
+      cur.qty += asNumber(it.cantidad, 0)
+      by.set(m, cur)
+    }
+    const rows = Array.from(by.values())
+    rows.sort((a, b) => b.qty - a.qty)
+    return rows.slice(0, 10).map((r) => ({ label: r.m, value: Math.round(r.qty) }))
+  }, [itemsForMeasureTotals])
 
   const dailyRows = useMemo(() => {
     const rows = Array.isArray(daily?.rows) ? daily.rows : []
@@ -501,12 +1142,24 @@ export default function Analytics() {
     }))
   }, [daily])
 
+  const dailyTotalSeries = useMemo(() => {
+    const last = dailyRows.slice(-14)
+    return last.map((r) => {
+      let total = 0
+      for (const [k, enabled] of Object.entries(movementEnabled || {})) {
+        if (!enabled) continue
+        total += asNumber(r[k], 0)
+      }
+      return { label: r.label, value: Math.round(total), color: 'rgba(96, 165, 250, 0.85)' }
+    })
+  }, [dailyRows, movementEnabled])
+
   const movementSeriesSpec = useMemo(
     () => [
-      { key: 'pt_salida_proy', label: 'PT salida', color: 'rgba(37, 99, 235, 0.75)' },
-      { key: 'pt_devol_proy', label: 'PT devolución', color: 'rgba(16, 185, 129, 0.75)' },
-      { key: 'fab_entrada', label: 'Fab entrada', color: 'rgba(245, 158, 11, 0.75)' },
-      { key: 'fab_salida', label: 'Fab salida', color: 'rgba(239, 68, 68, 0.65)' },
+      { key: 'pt_salida_proy', label: 'PT salida', color: 'rgba(30, 195, 167, 0.95)' },
+      { key: 'pt_devol_proy', label: 'PT devolución', color: 'rgba(126, 251, 110, 0.9)' },
+      { key: 'fab_entrada', label: 'Fab entrada', color: 'rgba(245, 158, 11, 0.85)' },
+      { key: 'fab_salida', label: 'Fab salida', color: 'rgba(239, 68, 68, 0.8)' },
     ],
     [],
   )
@@ -538,9 +1191,9 @@ export default function Analytics() {
   }, [filteredItems])
 
   const paretoSeries = useMemo(() => {
-    const total = groups.reduce((acc, g) => acc + asNumber(g.totalCantidad, 0), 0) || 1
+    const total = groupsNoStatus.reduce((acc, g) => acc + asNumber(g.totalCantidad, 0), 0) || 1
     let cumulative = 0
-    return groups.slice(0, 12).map((g) => {
+    return groupsNoStatus.slice(0, 12).map((g) => {
       cumulative += asNumber(g.totalCantidad, 0)
       const pct = Math.round((cumulative / total) * 100)
       return {
@@ -549,7 +1202,79 @@ export default function Analytics() {
         hint: `Acumulado: ${pct}%`,
       }
     })
-  }, [groups])
+  }, [groupsNoStatus])
+
+  const topGroupsSeries = useMemo(() => {
+    return groupsNoStatus.slice(0, 10).map((g) => ({
+      label: g.nombre,
+      value: Math.round(asNumber(g.totalCantidad, 0)),
+      color: 'rgba(30, 195, 167, 0.85)',
+    }))
+  }, [groupsNoStatus])
+
+  const zeroCount = useMemo(() => filteredItems.filter((x) => asNumber(x.cantidad, 0) === 0).length, [filteredItems])
+
+  const radarMetrics = useMemo(() => {
+    const total = Math.max(filteredItems.length, 1)
+    const belowPct = (invKpis.alertas / total) * 100
+    const overPct = (invKpis.sobreMax / total) * 100
+    const zeroPct = (zeroCount / total) * 100
+    const totalQty = Math.max(invKpis.totalCantidad, 1)
+    const reorderPct = (invKpis.reorderSuggested / totalQty) * 100
+    return [
+      { key: 'min', label: 'Cumple mín', value: clamp(100 - belowPct, 0, 100) },
+      { key: 'max', label: 'Cumple máx', value: clamp(100 - overPct, 0, 100) },
+      { key: 'disp', label: 'Disponib.', value: clamp(100 - zeroPct, 0, 100) },
+      { key: 'reo', label: 'Reorden', value: clamp(100 - reorderPct, 0, 100) },
+      { key: 'net', label: 'Net Proy', value: clamp(50 + ((dailyKpis.ptSalida - dailyKpis.ptDevol) / (dailyKpis.ptSalida + dailyKpis.ptDevol + 1)) * 50, 0, 100) },
+    ]
+  }, [
+    dailyKpis.ptDevol,
+    dailyKpis.ptSalida,
+    filteredItems.length,
+    invKpis.alertas,
+    invKpis.reorderSuggested,
+    invKpis.sobreMax,
+    invKpis.totalCantidad,
+    zeroCount,
+  ])
+
+  const cumpleMin = useMemo(() => radarMetrics.find((m) => m.key === 'min')?.value ?? 0, [radarMetrics])
+
+  const movementLineRows = useMemo(() => {
+    return dailyRows.map((r) => ({
+      ...r,
+      net_pt_proy: asNumber(r.pt_salida_proy, 0) - asNumber(r.pt_devol_proy, 0),
+      total: asNumber(r.pt_salida_proy, 0) + asNumber(r.pt_devol_proy, 0) + asNumber(r.fab_entrada, 0) + asNumber(r.fab_salida, 0),
+    }))
+  }, [dailyRows])
+
+  const movementLineSeries = useMemo(
+    () => [
+      { key: 'net_pt_proy', label: 'Net PT→Proy', color: 'rgba(30, 195, 167, 0.95)' },
+      { key: 'total', label: 'Total actividad', color: 'rgba(126, 251, 110, 0.9)' },
+    ],
+    [],
+  )
+
+  const [lineEnabled, setLineEnabled] = useLocalStorageState('an:lineEnabled', { net_pt_proy: true, total: true })
+
+  const toggleKind = (k) => {
+    setKindsValue((prev) => {
+      const base = Array.isArray(prev) ? prev : [String(prev || 'productos-terminados')]
+      const next = base.includes(k) ? base.filter((x) => x !== k) : [...base, k]
+      return next.length ? next : base
+    })
+  }
+
+  const toggleStatus = (next) => {
+    setStatus((prev) => (prev === next ? 'all' : next))
+  }
+
+  const toggleDim = (next) => {
+    const n = String(next || '').trim()
+    setDim((prev) => (String(prev || '').trim().toUpperCase() === n.toUpperCase() ? '' : n))
+  }
 
   const selectedGroup = useMemo(() => {
     if (!selectedGroupKey) return null
@@ -560,219 +1285,299 @@ export default function Analytics() {
     <section className="page">
       <header className="page-header">
         <h2>Analytics</h2>
+        <div className="actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setKindsValue(['materias-primas', 'subensambles', 'productos-terminados'])
+              setDim('')
+              setStatus('all')
+              setSelectedGroupKey('')
+              setViewTab('resumen')
+              setDays(30)
+            }}
+            disabled={isLoading}
+          >
+            Restablecer
+          </button>
+          <button type="button" className="btn" onClick={() => setRefreshKey((k) => k + 1)} disabled={isLoading}>
+            Recargar
+          </button>
+        </div>
       </header>
 
       <div className="page-body">
         {error ? <div className="form-error">{error}</div> : null}
 
+        <div className="kpi-grid">
+          <KpiCard label="Artículos" value={isLoading ? '-' : formatNumber(invKpis.totalItems)} />
+          <KpiCard label="Existencia total" value={isLoading ? '-' : formatNumber(Math.round(invKpis.totalCantidad))} />
+          <KpiCard
+            label="Bajo mínimo"
+            value={isLoading ? '-' : formatNumber(invKpis.alertas)}
+            badge="Acción"
+            onClick={() => {
+              toggleStatus('below_min')
+              setViewTab('grupos')
+            }}
+          />
+          <KpiCard
+            label="Sobre máximo"
+            value={isLoading ? '-' : formatNumber(invKpis.sobreMax)}
+            badge="Optimizar"
+            onClick={() => {
+              toggleStatus('over_max')
+              setViewTab('grupos')
+            }}
+          />
+          <KpiCard
+            label="Reorden sugerido"
+            value={isLoading ? '-' : formatNumber(Math.round(invKpis.reorderSuggested))}
+            badge="Plan"
+            onClick={() => {
+              toggleStatus('below_min')
+              setViewTab('grupos')
+            }}
+          />
+          <KpiCard
+            label="Net PT→Proyecto"
+            value={isLoading ? '-' : formatNumber(Math.round(dailyKpis.ptSalida - dailyKpis.ptDevol))}
+            onClick={() => setViewTab('movimientos')}
+          />
+        </div>
+
         <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div className="card-title" style={{ marginBottom: 0 }}>
-              Vista analítica (BI)
+              Explorador BI
             </div>
-            <button type="button" className="btn" onClick={() => setIsFiltersOpen((v) => !v)}>
-              {isFiltersOpen ? 'Ocultar filtros' : 'Mostrar filtros'}
-            </button>
-          </div>
-
-          {isFiltersOpen ? (
-            <div className="form-grid" style={{ marginTop: 12 }}>
-            <label className="field">
-              <span>Área</span>
-              <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={isLoading}>
-                <option value="materias-primas">Materia Prima</option>
-                <option value="subensambles">Subensambles</option>
-                <option value="productos-terminados">Productos Terminados</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Ordenar grupos por</span>
-              <select value={sort} onChange={(e) => setSort(e.target.value)} disabled={isLoading}>
-                <option value="cantidad">Existencia</option>
-                <option value="alertas">Alertas</option>
-                <option value="sobremax">Sobre máximo</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Movimientos (días)</span>
-              <select value={String(days)} onChange={(e) => setDays(Number(e.target.value))} disabled={isLoading}>
-                <option value="7">7</option>
-                <option value="14">14</option>
-                <option value="30">30</option>
-                <option value="90">90</option>
-                <option value="180">180</option>
-              </select>
-            </label>
-            <label className="field" style={{ gridColumn: '1 / -1' }}>
-              <span>Buscar</span>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Ej: CODO 4, COUPLING, TRANSICION..."
-                disabled={isLoading}
-              />
-            </label>
-            <label className="field">
-              <span>Filtrar por medida</span>
-              <input value={dim} onChange={(e) => setDim(e.target.value)} placeholder='Ej: "4", "PULG"' disabled={isLoading} />
-            </label>
-            <label className="field">
-              <span>Estado</span>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} disabled={isLoading}>
-                <option value="all">Todos</option>
-                <option value="below_min">Bajo mínimo</option>
-                <option value="over_max">Sobre máximo</option>
-                <option value="zero">Cero stock</option>
-                <option value="healthy">Saludable</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Stock mín. (≥)</span>
-              <input value={qtyMin} onChange={(e) => setQtyMin(e.target.value)} inputMode="decimal" placeholder="0" />
-            </label>
-            <label className="field">
-              <span>Stock máx. (≤)</span>
-              <input value={qtyMax} onChange={(e) => setQtyMax(e.target.value)} inputMode="decimal" placeholder="" />
-            </label>
-            <div className="modal-actions" style={{ gridColumn: '1 / -1' }}>
-              <button className="btn" type="button" onClick={() => setRefreshKey((k) => k + 1)} disabled={isLoading}>
-                Recargar
+            <div className="segmented">
+              <button type="button" className={viewTab === 'resumen' ? 'seg active' : 'seg'} onClick={() => setViewTab('resumen')}>
+                Resumen
               </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => {
-                  setSearch('')
-                  setDim('')
-                  setStatus('all')
-                  setQtyMin('')
-                  setQtyMax('')
-                  setSelectedGroupKey('')
+              <button type="button" className={viewTab === 'movimientos' ? 'seg active' : 'seg'} onClick={() => setViewTab('movimientos')}>
+                Movimientos
+              </button>
+              <button type="button" className={viewTab === 'grupos' ? 'seg active' : 'seg'} onClick={() => setViewTab('grupos')}>
+                Grupos
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="dash-layout">
+          <div className="dash-main">
+            <div className="grid-3">
+              <Bars
+                title="Totales por área (existencia)"
+                series={kindTotals.seriesQty}
+                onSelectLabel={(label) => {
+                  const target = ['materias-primas', 'subensambles', 'productos-terminados'].find((k) => kindLabel(k) === label)
+                  if (target) toggleKind(target)
                 }}
-                disabled={isLoading}
-              >
-                Limpiar filtros
-              </button>
+              />
+              <Bars
+                title="Totales por estado (artículos)"
+                series={statusTotals.map((s) => ({ label: s.label, value: s.value }))}
+                onSelectLabel={(label) => {
+                  const s = statusTotals.find((x) => x.label === label)
+                  if (s?.key) toggleStatus(s.key)
+                }}
+              />
+              <Bars title="Top medidas (existencia)" series={topMeasures} onSelectLabel={(label) => toggleDim(label)} />
             </div>
+
+            <div className="grid-3">
+              <PieDonutChart
+                title="Área (pastel por existencia)"
+                variant="pie"
+                series={kindTotals.seriesQty.map((s) => ({ ...s }))}
+                onSelectLabel={(label) => {
+                  const target = ['materias-primas', 'subensambles', 'productos-terminados'].find((k) => kindLabel(k) === label)
+                  if (target) toggleKind(target)
+                }}
+              />
+              <PieDonutChart
+                title="Estado (anillo por artículos)"
+                variant="donut"
+                centerLabel={
+                  status === 'all' ? 'Todos' : status === 'below_min' ? 'Bajo mín' : status === 'over_max' ? 'Sobre máx' : status === 'zero' ? 'Cero' : 'Saludable'
+                }
+                series={statusTotals.map((s, idx) => ({
+                  label: s.label,
+                  value: s.value,
+                  color:
+                    idx === 0
+                      ? 'rgba(245, 158, 11, 0.86)'
+                      : idx === 1
+                        ? 'rgba(239, 68, 68, 0.82)'
+                        : idx === 2
+                          ? 'rgba(148, 163, 184, 0.85)'
+                          : 'rgba(30, 195, 167, 0.92)',
+                }))}
+                onSelectLabel={(label) => {
+                  const s = statusTotals.find((x) => x.label === label)
+                  if (s?.key) toggleStatus(s.key)
+                }}
+              />
+              <ColumnChart
+                title="Top grupos (columnas)"
+                series={topGroupsSeries}
+                onSelectLabel={(label) => {
+                  setSelectedGroupKey(normalizeGroupKey(label))
+                  setViewTab('grupos')
+                }}
+                valueFormatter={(n) => formatNumber(Math.round(n))}
+              />
             </div>
-          ) : null}
-          <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-            Área: {kindLabel(kind)} · Filas: {formatNumber(filteredItems.length)} (límite 1000) · Grupos: {formatNumber(groups.length)}
+
+            <div className="grid-2">
+              <ColumnChart
+                title="Actividad total (últimos 14 días)"
+                series={dailyTotalSeries}
+                onSelectLabel={(label) => {
+                  setSelectedDay(label)
+                  setIsMovementsOpen(true)
+                }}
+                valueFormatter={(n) => formatNumber(Math.round(n))}
+              />
+              <Gauge
+                title="Cumple mínimo (gauge)"
+                value={cumpleMin}
+                max={100}
+                onClick={() => {
+                  toggleStatus('below_min')
+                  setViewTab('grupos')
+                }}
+              />
+            </div>
+
+            {viewTab === 'movimientos' ? (
+              <div className="grid-2">
+                <StackedBars
+                  title="Movimientos (stacked por día)"
+                  rows={dailyRows}
+                  series={movementSeriesSpec}
+                  enabledMap={movementEnabled}
+                  onToggleSeries={(key) => setMovementEnabled((m) => ({ ...m, [key]: !m[key] }))}
+                  onSelectLabel={(label) => {
+                    setSelectedDay(label)
+                    setIsMovementsOpen(true)
+                  }}
+                  valueFormatter={(n) => formatNumber(Math.round(n))}
+                />
+                <LineChart
+                  title="Tendencia (líneas)"
+                  rows={movementLineRows}
+                  series={movementLineSeries}
+                  enabledMap={lineEnabled}
+                  onToggleSeries={(k) => setLineEnabled((m) => ({ ...m, [k]: !m[k] }))}
+                  valueFormatter={(n) => formatNumber(Math.round(n))}
+                />
+              </div>
+            ) : viewTab === 'grupos' ? (
+              <div className="card">
+                <div className="card-title">Grupos y variantes (clic para ver detalle)</div>
+                <div className="table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Nombre común</th>
+                        <th className="num">Existencia</th>
+                        <th className="num">Alertas</th>
+                        <th className="num">Sobre máx.</th>
+                        <th>Variantes (medidas)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isLoading ? (
+                        <tr>
+                          <td colSpan={5} className="empty">
+                            Cargando...
+                          </td>
+                        </tr>
+                      ) : groups.length ? (
+                        groups.slice(0, 80).map((g) => (
+                          <tr
+                            key={g.key}
+                            onClick={() => setSelectedGroupKey(g.key)}
+                            style={{ cursor: 'pointer' }}
+                            title="Click para ver detalle"
+                          >
+                            <td className="mono">{g.nombre}</td>
+                            <td className="num">{formatNumber(Math.round(g.totalCantidad))}</td>
+                            <td className="num">{formatNumber(g.alerts)}</td>
+                            <td className="num">{formatNumber(g.sobreMax)}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {g.variants.slice(0, 5).map((v) => (
+                                  <div key={v.medida} className="muted" style={{ fontSize: 13 }}>
+                                    {v.medida}: {formatNumber(Math.round(v.cantidad))} {g.unidad || ''}{' '}
+                                    {v.alert ? '· BAJO MIN' : ''} {v.over ? '· SOBRE MAX' : ''}{' '}
+                                    {v.examples.length ? `· ej: ${v.examples.join(', ')}` : ''}
+                                  </div>
+                                ))}
+                                {g.variants.length > 5 ? (
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    (+{g.variants.length - 5} variantes)
+                                  </div>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="empty">
+                            Sin resultados.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {!isLoading && groups.length > 80 ? (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+                    Mostrando 80 de {groups.length}.
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="grid-2">
+                <Bars
+                  title="Pareto (top grupos por existencia)"
+                  series={paretoSeries}
+                  onSelectLabel={(label) => setSelectedGroupKey(normalizeGroupKey(label))}
+                />
+                <StackedBars
+                  title="Movimientos (stacked por día)"
+                  rows={dailyRows}
+                  series={movementSeriesSpec}
+                  enabledMap={movementEnabled}
+                  onToggleSeries={(key) => setMovementEnabled((m) => ({ ...m, [key]: !m[key] }))}
+                  valueFormatter={(n) => formatNumber(Math.round(n))}
+                />
+              </div>
+            )}
           </div>
+
+          <aside className="dash-side">
+            <RadarChart title="Radar BI" metrics={radarMetrics} />
+          </aside>
         </div>
 
-        <div className="stats">
-          <div className="stat-card">
-            <div className="stat-label">Artículos</div>
-            <div className="stat-value">{isLoading ? '-' : formatNumber(invKpis.totalItems)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Existencia total</div>
-            <div className="stat-value">{isLoading ? '-' : formatNumber(Math.round(invKpis.totalCantidad))}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Bajo mínimo</div>
-            <div className="stat-value">{isLoading ? '-' : formatNumber(invKpis.alertas)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Sobre máximo</div>
-            <div className="stat-value">{isLoading ? '-' : formatNumber(invKpis.sobreMax)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Reorden sugerido</div>
-            <div className="stat-value">{isLoading ? '-' : formatNumber(Math.round(invKpis.reorderSuggested))}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Net PT→Proyecto</div>
-            <div className="stat-value">
-              {isLoading ? '-' : formatNumber(Math.round(dailyKpis.ptSalida - dailyKpis.ptDevol))}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid-2">
-          <StackedBars
-            title="Movimientos (stacked por día)"
-            rows={dailyRows}
-            series={movementSeriesSpec}
-            enabledMap={movementEnabled}
-            onToggleSeries={(key) => setMovementEnabled((m) => ({ ...m, [key]: !m[key] }))}
-            valueFormatter={(n) => formatNumber(Math.round(n))}
-          />
-          <Bars
-            title="Pareto (top grupos por existencia)"
-            series={paretoSeries}
-            onSelectLabel={(label) => setSelectedGroupKey(normalizeGroupKey(label))}
-          />
-        </div>
-
-        <div className="card">
-          <div className="card-title">Grupos y variantes (clic para ver detalle)</div>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Nombre común</th>
-                  <th className="num">Existencia</th>
-                  <th className="num">Alertas</th>
-                  <th className="num">Sobre máx.</th>
-                  <th>Variantes (medidas)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={5} className="empty">
-                      Cargando...
-                    </td>
-                  </tr>
-                ) : groups.length ? (
-                  groups.slice(0, 80).map((g) => (
-                    <tr
-                      key={g.key}
-                      onClick={() => setSelectedGroupKey(g.key)}
-                      style={{ cursor: 'pointer' }}
-                      title="Click para ver detalle"
-                    >
-                      <td className="mono">{g.nombre}</td>
-                      <td className="num">{formatNumber(Math.round(g.totalCantidad))}</td>
-                      <td className="num">{formatNumber(g.alerts)}</td>
-                      <td className="num">{formatNumber(g.sobreMax)}</td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {g.variants.slice(0, 5).map((v) => (
-                            <div key={v.medida} className="muted" style={{ fontSize: 13 }}>
-                              {v.medida}: {formatNumber(Math.round(v.cantidad))} {g.unidad || ''}{' '}
-                              {v.alert ? '· BAJO MIN' : ''} {v.over ? '· SOBRE MAX' : ''}{' '}
-                              {v.examples.length ? `· ej: ${v.examples.join(', ')}` : ''}
-                            </div>
-                          ))}
-                          {g.variants.length > 5 ? (
-                            <div className="muted" style={{ fontSize: 12 }}>
-                              (+{g.variants.length - 5} variantes)
-                            </div>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="empty">
-                      Sin resultados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {!isLoading && groups.length > 80 ? (
-            <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-              Mostrando 80 de {groups.length}. Usa el buscador para refinar.
-            </div>
-          ) : null}
-        </div>
         <GroupModal group={selectedGroup} onClose={() => setSelectedGroupKey('')} />
+        {isMovementsOpen ? (
+          <MovementsLogModal
+            title="Movimientos del día"
+            day={selectedDay}
+            rows={movementLogRows}
+            isLoading={isLoadingMovementLog}
+            error={movementLogError}
+            onClose={() => setIsMovementsOpen(false)}
+          />
+        ) : null}
       </div>
     </section>
   )

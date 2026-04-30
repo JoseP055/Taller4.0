@@ -844,6 +844,81 @@ SELECT jsonb_build_object(
 );
 $$;
 
+CREATE OR REPLACE FUNCTION inv_movements_log(
+  days integer DEFAULT 30,
+  day date DEFAULT NULL,
+  tipo text DEFAULT NULL,
+  lim integer DEFAULT 200
+)
+RETURNS jsonb
+LANGUAGE sql
+AS $$
+WITH params AS (
+  SELECT
+    GREATEST(COALESCE(days, 30), 1)::int AS days,
+    NULLIF(BTRIM(tipo), '')::text AS tipo,
+    day AS day,
+    LEAST(GREATEST(COALESCE(lim, 200), 1), 500)::int AS lim
+),
+base AS (
+  SELECT
+    ms.id_movimiento,
+    ms.fecha_hora,
+    ms.tipo_movimiento,
+    ms.cantidad,
+    ms.referencia,
+    ms.observaciones,
+    a.id_articulo,
+    a.codigo_articulo,
+    a.nombre_base,
+    a.dimension_principal,
+    uo.codigo_ubicacion AS ubicacion_origen,
+    ud.codigo_ubicacion AS ubicacion_destino
+  FROM movimiento_stock ms
+  CROSS JOIN params p
+  JOIN articulo a ON a.id_articulo = ms.id_articulo
+  LEFT JOIN ubicacion uo ON uo.id_ubicacion = ms.id_ubicacion_origen
+  LEFT JOIN ubicacion ud ON ud.id_ubicacion = ms.id_ubicacion_destino
+  WHERE ms.fecha_hora >= (now() - (p.days::text || ' days')::interval)
+    AND (p.day IS NULL OR date_trunc('day', ms.fecha_hora)::date = p.day)
+    AND (p.tipo IS NULL OR ms.tipo_movimiento = p.tipo)
+  ORDER BY ms.fecha_hora DESC, ms.id_movimiento DESC
+  LIMIT (SELECT lim FROM params)
+)
+SELECT jsonb_build_object(
+  'ok', true,
+  'days', (SELECT days FROM params),
+  'day', (SELECT day FROM params),
+  'tipo', (SELECT tipo FROM params),
+  'rows',
+  COALESCE(
+    (
+      SELECT jsonb_agg(
+        jsonb_build_object(
+          'id', b.id_movimiento,
+          'fecha_hora', b.fecha_hora,
+          'dia', date_trunc('day', b.fecha_hora)::date,
+          'tipo', b.tipo_movimiento,
+          'cantidad', b.cantidad,
+          'referencia', b.referencia,
+          'observaciones', b.observaciones,
+          'articulo', jsonb_build_object(
+            'id', b.id_articulo,
+            'codigo', b.codigo_articulo,
+            'nombre', b.nombre_base,
+            'medida', b.dimension_principal
+          ),
+          'origen', b.ubicacion_origen,
+          'destino', b.ubicacion_destino
+        )
+      )
+      FROM base b
+    ),
+    '[]'::jsonb
+  )
+);
+$$;
+
 CREATE OR REPLACE FUNCTION inv_assoc_list()
 RETURNS jsonb
 LANGUAGE sql
@@ -975,6 +1050,7 @@ CREATE OR REPLACE FUNCTION inv_update_item(
 RETURNS jsonb
 LANGUAGE plpgsql
 AS $$
+#variable_conflict use_column
 DECLARE
   categoria_codigo text;
   ubicacion_codigo text;
@@ -1061,6 +1137,7 @@ GRANT EXECUTE ON FUNCTION inv_fabricate(integer, integer, numeric, text, text, i
 GRANT EXECUTE ON FUNCTION inv_move_pt_project(text, integer, numeric, text, text, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_pt_project_state(integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_movements_daily(integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION inv_movements_log(integer, date, text, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_list() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_upsert(integer, integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION inv_assoc_delete(integer) TO anon, authenticated;

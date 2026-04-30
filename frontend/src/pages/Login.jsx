@@ -6,6 +6,7 @@ export default function Login() {
   const { user, login, register, allowedEmailDomains } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light')
 
   const from = useMemo(() => {
     const state = location.state
@@ -54,9 +55,28 @@ export default function Login() {
   return (
     <main className="login">
       <form className="login-card" onSubmit={onSubmit}>
-        <div className="login-title">
-          <h1>Climatisa</h1>
-          <p>Control de Inventario · Fábrica de ductos</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+          <div className="login-brand">
+            <img src="/LogoClimatisaSVG.svg" alt="Climatisa" />
+            <div className="login-brand-text">
+              <div className="brand-title">Climatisa</div>
+              <div className="brand-subtitle">Inventario · Operación</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => {
+              const next = theme === 'dark' ? 'light' : 'dark'
+              setTheme(next)
+              document.documentElement.dataset.theme = next
+              localStorage.setItem('climatisa_theme', next)
+            }}
+            aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+          >
+            {theme === 'dark' ? '☀' : '☾'}
+          </button>
         </div>
 
         <label className="field">
@@ -81,12 +101,6 @@ export default function Login() {
             required
           />
         </label>
-
-        {mode === 'register' ? (
-          <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
-            Solo correos corporativos ({(allowedEmailDomains || []).join(', ')}). Contraseña mínimo 10 caracteres y con números.
-          </div>
-        ) : null}
 
         {message ? (
           <div className="card" style={{ padding: 12 }}>

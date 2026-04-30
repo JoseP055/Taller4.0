@@ -463,6 +463,30 @@ def analytics_movimientos_daily(days: int = Query(30, ge=1, le=365), authorizati
   _require_not_zebra(ctx)
   return _supabase_rpc('inv_movements_daily', {'days': days}, authorization=authorization)
 
+@app.get('/analytics/movimientos/log')
+def analytics_movimientos_log(
+  days: int = Query(30, ge=1, le=365),
+  day: str | None = Query(default=None, max_length=10),
+  tipo: str | None = Query(default=None, max_length=30),
+  limit: int = Query(200, ge=1, le=500),
+  authorization: str | None = Header(default=None),
+):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  day_value = None
+  if day is not None and str(day).strip():
+    try:
+      day_value = datetime.strptime(str(day).strip(), '%Y-%m-%d').date().isoformat()
+    except ValueError as e:
+      raise HTTPException(status_code=400, detail='Parámetro day inválido (usa YYYY-MM-DD)') from e
+  payload = {
+    'days': days,
+    'day': day_value,
+    'tipo': (tipo or None),
+    'lim': limit,
+  }
+  return _supabase_rpc('inv_movements_log', payload, authorization=authorization)
+
 
 @app.post('/auth/register')
 def auth_register(authorization: str | None = Header(default=None)):

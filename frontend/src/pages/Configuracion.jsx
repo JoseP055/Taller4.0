@@ -216,9 +216,6 @@ export default function Configuracion() {
 
         <div className="card">
           <div className="card-title">Usuarios (Supabase Auth)</div>
-          <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
-            Un usuario se agrega aquí cuando inicia sesión por primera vez. Luego lo activas.
-          </div>
 
           <div className="modal-actions" style={{ marginBottom: 10 }}>
             <button

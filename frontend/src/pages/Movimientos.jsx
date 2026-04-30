@@ -161,6 +161,23 @@ function normalizeItems(data) {
   }))
 }
 
+function SuccessModal({ open, title, children, onAccept }) {
+  if (!open) return null
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal" style={{ maxWidth: 860 }}>
+        <div className="modal-head">
+          <div className="modal-title">{title}</div>
+          <button type="button" className="btn" onClick={onAccept}>
+            Aceptar
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 function ItemPicker({
   items,
   selectedId,
@@ -190,10 +207,10 @@ function ItemPicker({
   return (
     <div
       style={{
-        border: '1px solid rgba(0,0,0,0.12)',
+        border: '1px solid var(--border)',
         borderRadius: 10,
         overflow: 'hidden',
-        background: '#fff',
+        background: 'var(--panel)',
       }}
     >
       <div>
@@ -209,7 +226,7 @@ function ItemPicker({
                   justifyContent: 'space-between',
                   gap: 12,
                   padding: '10px 10px',
-                  borderBottom: '1px solid rgba(0,0,0,0.06)',
+                  borderBottom: '1px solid var(--border)',
                 }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
@@ -247,7 +264,7 @@ function ItemPicker({
             justifyContent: 'space-between',
             gap: 10,
             padding: 10,
-            borderTop: '1px solid rgba(0,0,0,0.06)',
+            borderTop: '1px solid var(--border)',
           }}
         >
           <button
@@ -296,6 +313,8 @@ export default function Movimientos() {
   const [estado, setEstado] = useState(null)
   const [estadoError, setEstadoError] = useState('')
   const [isLoadingEstado, setIsLoadingEstado] = useState(false)
+  const [successOpen, setSuccessOpen] = useState(false)
+  const [successResult, setSuccessResult] = useState(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -439,8 +458,8 @@ export default function Movimientos() {
         },
       })
       setResult(res)
-      setCantidad('')
-      setObservaciones('')
+      setSuccessResult(res)
+      setSuccessOpen(true)
       setRefreshKey((k) => k + 1)
       try {
         const nextEstado = await fetchJson(
@@ -466,6 +485,39 @@ export default function Movimientos() {
 
       <div className="page-body">
         {error ? <div className="form-error">{error}</div> : null}
+        <SuccessModal
+          open={successOpen}
+          title={modo === 'SALIDA_PROYECTO' ? 'Movimiento completado (salida)' : 'Movimiento completado (devolución)'}
+          onAccept={() => {
+            setSuccessOpen(false)
+            setSuccessResult(null)
+            setResult(null)
+            setSearch('')
+            setIdPt('')
+            setScanCodigo('')
+            setCantidad('')
+            setObservaciones('')
+          }}
+        >
+          <div className="kv">
+            <div className="kv-row">
+              <div className="kv-k">Cantidad</div>
+              <div className="kv-v">{formatNumber(asNumber(successResult?.cantidad, 0))}</div>
+            </div>
+            <div className="kv-row">
+              <div className="kv-k">Stock</div>
+              <div className="kv-v">
+                {formatNumber(asNumber(successResult?.stock?.antes, 0))} → {formatNumber(asNumber(successResult?.stock?.despues, 0))}
+              </div>
+            </div>
+            <div className="kv-row">
+              <div className="kv-k">Proyecto</div>
+              <div className="kv-v">
+                {formatNumber(asNumber(successResult?.proyecto?.antes, 0))} → {formatNumber(asNumber(successResult?.proyecto?.despues, 0))}
+              </div>
+            </div>
+          </div>
+        </SuccessModal>
 
         <div className="card">
           <div className="card-title">Producto terminado ↔ Proyecto</div>

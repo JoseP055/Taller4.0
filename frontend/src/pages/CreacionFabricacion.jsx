@@ -165,6 +165,23 @@ function normalizeItems(data) {
   }))
 }
 
+function SuccessModal({ open, title, children, onAccept }) {
+  if (!open) return null
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal" style={{ maxWidth: 860 }}>
+        <div className="modal-head">
+          <div className="modal-title">{title}</div>
+          <button type="button" className="btn" onClick={onAccept}>
+            Aceptar
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 function ItemInfo({ title, item }) {
   if (!item) {
     return (
@@ -247,10 +264,10 @@ function ItemPicker({
   return (
     <div
       style={{
-        border: '1px solid rgba(0,0,0,0.12)',
+        border: '1px solid var(--border)',
         borderRadius: 10,
         overflow: 'hidden',
-        background: '#fff',
+        background: 'var(--panel)',
       }}
     >
       <div>
@@ -266,7 +283,7 @@ function ItemPicker({
                   justifyContent: 'space-between',
                   gap: 12,
                   padding: '10px 10px',
-                  borderBottom: '1px solid rgba(0,0,0,0.06)',
+                  borderBottom: '1px solid var(--border)',
                 }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
@@ -316,7 +333,7 @@ function ItemPicker({
             justifyContent: 'space-between',
             gap: 10,
             padding: 10,
-            borderTop: '1px solid rgba(0,0,0,0.06)',
+            borderTop: '1px solid var(--border)',
           }}
         >
           <button
@@ -369,9 +386,28 @@ export default function CreacionFabricacion() {
   const [assocSearchSub, setAssocSearchSub] = useState('')
   const [assocSearchPt, setAssocSearchPt] = useState('')
   const [isAssocSubmitting, setIsAssocSubmitting] = useState(false)
+  const [isAssocOpen, setIsAssocOpen] = useState(() => {
+    try {
+      const raw = localStorage.getItem('cf_assoc_open')
+      if (!raw) return true
+      return raw === '1'
+    } catch {
+      return true
+    }
+  })
 
   const [result, setResult] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [successOpen, setSuccessOpen] = useState(false)
+  const [successResult, setSuccessResult] = useState(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cf_assoc_open', isAssocOpen ? '1' : '0')
+    } catch {
+      return
+    }
+  }, [isAssocOpen])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -603,8 +639,8 @@ export default function CreacionFabricacion() {
         },
       })
       setResult(res)
-      setCantidad('')
-      setObservaciones('')
+      setSuccessResult(res)
+      setSuccessOpen(true)
       setRefreshKey((k) => k + 1)
     } catch (e2) {
       setError(e2?.message || 'No se pudo registrar la fabricación')
@@ -666,6 +702,41 @@ export default function CreacionFabricacion() {
 
       <div className="page-body">
         {error ? <div className="form-error">{error}</div> : null}
+        <SuccessModal
+          open={successOpen}
+          title="Fabricación completada"
+          onAccept={() => {
+            setSuccessOpen(false)
+            setSuccessResult(null)
+            setResult(null)
+            setSearchSub('')
+            setIdSub('')
+            setIdPt('')
+            setScanSubCodigo('')
+            setCantidad('')
+            setObservaciones('')
+          }}
+        >
+          <div className="kv">
+            <div className="kv-row">
+              <div className="kv-k">Cantidad</div>
+              <div className="kv-v">{formatNumber(asNumber(successResult?.cantidad, 0))}</div>
+            </div>
+            <div className="kv-row">
+              <div className="kv-k">Subensamble</div>
+              <div className="kv-v">
+                {formatNumber(asNumber(successResult?.subensamble?.antes, 0))} → {formatNumber(asNumber(successResult?.subensamble?.despues, 0))}
+              </div>
+            </div>
+            <div className="kv-row">
+              <div className="kv-k">Producto terminado</div>
+              <div className="kv-v">
+                {formatNumber(asNumber(successResult?.producto_terminado?.antes, 0))} →{' '}
+                {formatNumber(asNumber(successResult?.producto_terminado?.despues, 0))}
+              </div>
+            </div>
+          </div>
+        </SuccessModal>
 
         <div className="card">
           <div className="card-title">Convertir subensamble → producto terminado</div>
@@ -754,10 +825,10 @@ export default function CreacionFabricacion() {
               <span>Producto terminado</span>
               <div
                 style={{
-                  border: '1px solid rgba(0,0,0,0.12)',
+                  border: '1px solid var(--border)',
                   borderRadius: 10,
                   padding: 12,
-                  background: '#fff',
+                  background: 'var(--panel)',
                 }}
               >
                 {selectedPt ? (
@@ -890,150 +961,168 @@ export default function CreacionFabricacion() {
 
         {isAdmin ? (
           <div className="card">
-            <div className="card-title">Preconfiguración de asociaciones</div>
-            {assocError ? <div className="form-error">{assocError}</div> : null}
-            <form className="form-grid" onSubmit={onSaveAssoc}>
-              <label className="field">
-                <span>Subensamble</span>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <input
-                    value={assocSearchSub}
-                    onChange={(e) => setAssocSearchSub(e.target.value)}
-                    placeholder="Buscar subensamble..."
-                    disabled={isLoading || isAssocSubmitting}
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      setAssocSubId('')
-                      setAssocSearchSub('')
-                    }}
-                    disabled={isLoading || isAssocSubmitting || !assocSubId}
-                  >
-                    Limpiar
-                  </button>
-                </div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                  {isLoading ? 'Cargando...' : `Disponibles: ${filteredAssocSubOptions.length}`}
-                </div>
-                <div style={{ marginTop: 10 }}>
-                  <ItemPicker
-                    items={filteredAssocSubOptions}
-                    selectedId={assocSubId}
-                    onPick={(next) => setAssocSubId(next)}
-                    disabled={isLoading || isAssocSubmitting}
-                    pageSize={5}
-                    resetKey={`assocSub:${assocSearchSub}`}
-                    emptyText={
-                      !subensambles.length
-                        ? 'No hay subensambles registrados.'
-                        : !assocSubOptions.length
-                          ? 'No hay subensambles disponibles (ya están asociados).'
-                          : 'No hay resultados con ese filtro.'
-                    }
-                    showQty={false}
-                  />
-                </div>
-              </label>
-
-              <label className="field">
-                <span>Producto terminado</span>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <input
-                    value={assocSearchPt}
-                    onChange={(e) => setAssocSearchPt(e.target.value)}
-                    placeholder="Buscar producto terminado..."
-                    disabled={isLoading || isAssocSubmitting}
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      setAssocPtId('')
-                      setAssocSearchPt('')
-                    }}
-                    disabled={isLoading || isAssocSubmitting || !assocPtId}
-                  >
-                    Limpiar
-                  </button>
-                </div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                  {isLoading ? 'Cargando...' : `Disponibles: ${filteredAssocPtOptions.length}`}
-                </div>
-                <div style={{ marginTop: 10 }}>
-                  <ItemPicker
-                    items={filteredAssocPtOptions}
-                    selectedId={assocPtId}
-                    onPick={(next) => setAssocPtId(next)}
-                    disabled={isLoading || isAssocSubmitting}
-                    pageSize={5}
-                    resetKey={`assocPt:${assocSearchPt}`}
-                    emptyText={
-                      !productosTerminados.length
-                        ? 'No hay productos terminados registrados.'
-                        : !assocPtOptions.length
-                          ? 'No hay productos terminados disponibles (ya están asociados).'
-                          : 'No hay resultados con ese filtro.'
-                    }
-                    showQty={false}
-                  />
-                </div>
-              </label>
-
-              <div className="modal-actions" style={{ gridColumn: '1 / -1' }}>
-                <button className="primary" type="submit" disabled={isLoading || isAssocSubmitting}>
-                  {isAssocSubmitting ? 'Guardando...' : 'Guardar asociación'}
-                </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div className="card-title" style={{ marginBottom: 0 }}>
+                Preconfiguración de asociaciones
               </div>
-            </form>
-
-            <div className="table-wrap" style={{ marginTop: 14 }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Subensamble</th>
-                    <th>Producto terminado</th>
-                    <th>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.isArray(asociaciones) && asociaciones.length ? (
-                    asociaciones.map((a) => (
-                      <tr key={a.id}>
-                        <td className="mono">
-                          {a.sub_codigo} — {a.sub_nombre}
-                        </td>
-                        <td className="mono">
-                          {a.pt_codigo} — {a.pt_nombre}
-                        </td>
-                        <td>
-                          <div className="actions inline">
-                            <button
-                              type="button"
-                              className="btn icon"
-                              onClick={() => onDeleteAssoc(a.id_subensamble)}
-                              disabled={isAssocSubmitting}
-                              title="Eliminar"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={3} className="empty">
-                        No hay asociaciones configuradas.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <button type="button" className="btn" onClick={() => setIsAssocOpen((v) => !v)}>
+                {isAssocOpen ? 'Ocultar' : 'Mostrar'}
+              </button>
             </div>
+
+            {isAssocOpen ? (
+              <>
+                {assocError ? <div className="form-error" style={{ marginTop: 12 }}>{assocError}</div> : null}
+                <form className="form-grid" onSubmit={onSaveAssoc} style={{ marginTop: 12 }}>
+                  <label className="field">
+                    <span>Subensamble</span>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <input
+                        value={assocSearchSub}
+                        onChange={(e) => setAssocSearchSub(e.target.value)}
+                        placeholder="Buscar subensamble..."
+                        disabled={isLoading || isAssocSubmitting}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          setAssocSubId('')
+                          setAssocSearchSub('')
+                        }}
+                        disabled={isLoading || isAssocSubmitting || !assocSubId}
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                      {isLoading ? 'Cargando...' : `Disponibles: ${filteredAssocSubOptions.length}`}
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <ItemPicker
+                        items={filteredAssocSubOptions}
+                        selectedId={assocSubId}
+                        onPick={(next) => setAssocSubId(next)}
+                        disabled={isLoading || isAssocSubmitting}
+                        pageSize={5}
+                        resetKey={`assocSub:${assocSearchSub}`}
+                        emptyText={
+                          !subensambles.length
+                            ? 'No hay subensambles registrados.'
+                            : !assocSubOptions.length
+                              ? 'No hay subensambles disponibles (ya están asociados).'
+                              : 'No hay resultados con ese filtro.'
+                        }
+                        showQty={false}
+                      />
+                    </div>
+                  </label>
+
+                  <label className="field">
+                    <span>Producto terminado</span>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <input
+                        value={assocSearchPt}
+                        onChange={(e) => setAssocSearchPt(e.target.value)}
+                        placeholder="Buscar producto terminado..."
+                        disabled={isLoading || isAssocSubmitting}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          setAssocPtId('')
+                          setAssocSearchPt('')
+                        }}
+                        disabled={isLoading || isAssocSubmitting || !assocPtId}
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                      {isLoading ? 'Cargando...' : `Disponibles: ${filteredAssocPtOptions.length}`}
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <ItemPicker
+                        items={filteredAssocPtOptions}
+                        selectedId={assocPtId}
+                        onPick={(next) => setAssocPtId(next)}
+                        disabled={isLoading || isAssocSubmitting}
+                        pageSize={5}
+                        resetKey={`assocPt:${assocSearchPt}`}
+                        emptyText={
+                          !productosTerminados.length
+                            ? 'No hay productos terminados registrados.'
+                            : !assocPtOptions.length
+                              ? 'No hay productos terminados disponibles (ya están asociados).'
+                              : 'No hay resultados con ese filtro.'
+                        }
+                        showQty={false}
+                      />
+                    </div>
+                  </label>
+
+                  <div className="modal-actions" style={{ gridColumn: '1 / -1' }}>
+                    <button className="primary" type="submit" disabled={isLoading || isAssocSubmitting}>
+                      {isAssocSubmitting ? 'Guardando...' : 'Guardar asociación'}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="table-wrap" style={{ marginTop: 14 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Subensamble</th>
+                        <th>Producto terminado</th>
+                        <th>Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.isArray(asociaciones) && asociaciones.length ? (
+                        asociaciones.map((a) => (
+                          <tr key={a.id}>
+                            <td className="mono">
+                              {a.sub_codigo} — {a.sub_nombre}
+                            </td>
+                            <td className="mono">
+                              {a.pt_codigo} — {a.pt_nombre}
+                            </td>
+                            <td>
+                              <div className="actions inline">
+                                <button
+                                  type="button"
+                                  className="btn icon"
+                                  onClick={() => onDeleteAssoc(a.id_subensamble)}
+                                  disabled={isAssocSubmitting}
+                                  title="Eliminar"
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3} className="empty">
+                            No hay asociaciones configuradas.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+                {Array.isArray(asociaciones) && asociaciones.length
+                  ? `Asociaciones configuradas: ${asociaciones.length}.`
+                  : 'Sin asociaciones configuradas.'}
+              </div>
+            )}
           </div>
         ) : null}
       </div>

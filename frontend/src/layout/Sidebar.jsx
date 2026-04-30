@@ -24,7 +24,15 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
       ) : null}
       <aside className={`sidebar${isOpen ? ' open' : ''}`}>
         <div className="brand">
-          <div className="brand-title">Inventario Ductos</div>
+          <div className="brand-mark">
+            <div className="brand-logo">
+              <img src="/LogoClimatisaSVG.svg" alt="Climatisa" />
+            </div>
+            <div className="brand-meta">
+              <div className="brand-title">Climatisa</div>
+              <div className="brand-subtitle">Inventario · Operación</div>
+            </div>
+          </div>
         </div>
 
         <nav className="nav">
