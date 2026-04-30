@@ -205,11 +205,18 @@ def _require_not_zebra(ctx: dict):
     raise HTTPException(status_code=403, detail='No autorizado')
 
 
+def _cors_allow_origin_regex() -> str:
+  raw = os.environ.get('CORS_ALLOW_ORIGIN_REGEX') or os.environ.get('APP_CORS_ALLOW_ORIGIN_REGEX')
+  if raw and raw.strip():
+    return raw.strip()
+  return r'^http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}):\d+$'
+
+
 app = FastAPI(title='InventarioTaller API')
 
 app.add_middleware(
   CORSMiddleware,
-  allow_origin_regex=r'^http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}):\d+$',
+  allow_origin_regex=_cors_allow_origin_regex(),
   allow_credentials=True,
   allow_methods=['*'],
   allow_headers=['*'],
