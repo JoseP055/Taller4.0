@@ -208,8 +208,11 @@ def _require_not_zebra(ctx: dict):
 def _cors_allow_origin_regex() -> str:
   raw = os.environ.get('CORS_ALLOW_ORIGIN_REGEX') or os.environ.get('APP_CORS_ALLOW_ORIGIN_REGEX')
   if raw and raw.strip():
-    return raw.strip()
-  return r'^http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}):\d+$'
+    v = raw.strip()
+    if (v.startswith('`') and v.endswith('`')) or (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+      v = v[1:-1].strip()
+    return v
+  return r'^https?://.*$'
 
 
 app = FastAPI(title='InventarioTaller API')
