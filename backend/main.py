@@ -321,6 +321,24 @@ class MovimientoPayload(BaseModel):
   referencia: str | None = Field(default=None, max_length=100)
   observaciones: str | None = Field(default=None, max_length=255)
 
+class RecetaItemPayload(BaseModel):
+  id_articulo: int = Field(..., ge=1)
+  cantidad_por_unidad: float = Field(..., gt=0)
+
+class RecetaPayload(BaseModel):
+  id_producto_terminado: int = Field(..., ge=1)
+  nombre: str = Field(..., min_length=1, max_length=150)
+  items: list[RecetaItemPayload] = Field(..., min_length=1)
+
+class RecetaActivaPayload(BaseModel):
+  activa: bool
+
+class FabricacionRecetaPayload(BaseModel):
+  id_receta: int = Field(..., ge=1)
+  cantidad: float = Field(..., gt=0)
+  referencia: str | None = Field(default=None, max_length=100)
+  observaciones: str | None = Field(default=None, max_length=255)
+
 @app.get('/inventario/{kind}/next-codigo')
 def next_codigo(kind: str, id_subcategoria: int = Query(..., ge=1), authorization: str | None = Header(default=None)):
   ctx = _require_app_access(authorization)
@@ -399,6 +417,76 @@ def crear_fabricacion(payload: FabricacionPayload, authorization: str | None = H
   )
   _cache_invalidate_prefix('summary:subensambles')
   _cache_invalidate_prefix('summary:productos-terminados')
+  return res
+
+@app.get('/logistica/recetas')
+def listar_recetas(id_producto_terminado: int | None = Query(default=None, ge=1), authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  return _supabase_rpc('inv_receta_list', {'id_producto_terminado': id_producto_terminado}, authorization=authorization)
+
+@app.post('/logistica/recetas')
+def crear_receta(payload: RecetaPayload, authorization: str | None = Header(default=None)):
+  _require_admin(authorization)
+  return _supabase_rpc(
+    'inv_receta_upsert',
+    {
+      'id_receta': None,
+      'id_producto_terminado': payload.id_producto_terminado,
+      'nombre': payload.nombre,
+      'items': [i.model_dump() for i in payload.items],
+    },
+    authorization=authorization,
+  )
+
+@app.patch('/logistica/recetas/{id_receta}')
+def editar_receta(id_receta: int, payload: RecetaPayload, authorization: str | None = Header(default=None)):
+  _require_admin(authorization)
+  return _supabase_rpc(
+    'inv_receta_upsert',
+    {
+      'id_receta': id_receta,
+      'id_producto_terminado': payload.id_producto_terminado,
+      'nombre': payload.nombre,
+      'items': [i.model_dump() for i in payload.items],
+    },
+    authorization=authorization,
+  )
+
+@app.patch('/logistica/recetas/{id_receta}/activa')
+def activar_receta(id_receta: int, payload: RecetaActivaPayload, authorization: str | None = Header(default=None)):
+  _require_admin(authorization)
+  return _supabase_rpc(
+    'inv_receta_set_active',
+    {'id_receta': id_receta, 'activa': payload.activa},
+    authorization=authorization,
+  )
+
+@app.delete('/logistica/recetas/{id_receta}')
+def borrar_receta(id_receta: int, authorization: str | None = Header(default=None)):
+  _require_admin(authorization)
+  return _supabase_rpc(
+    'inv_receta_delete',
+    {'id_receta': id_receta},
+    authorization=authorization,
+  )
+
+@app.post('/logistica/fabricacion-receta')
+def crear_fabricacion_receta(payload: FabricacionRecetaPayload, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  res = _supabase_rpc(
+    'inv_fabricate_from_receta',
+    {
+      'id_receta': payload.id_receta,
+      'cantidad': payload.cantidad,
+      'referencia': payload.referencia or 'FABRICACION',
+      'observaciones': payload.observaciones,
+      'id_usuario': None,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('summary:subensambles')
+  _cache_invalidate_prefix('summary:productos-terminados')
+  _cache_invalidate_prefix('summary:materias-primas')
   return res
 
 
