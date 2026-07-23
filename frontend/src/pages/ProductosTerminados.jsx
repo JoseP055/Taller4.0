@@ -387,7 +387,7 @@ function ItemModal({ meta, onClose, onSave }) {
   }, [])
 
   const unidadOptions = useMemo(
-    () => ['UND', 'PZ', 'MTS', 'KGS', 'GAL', 'LTS', 'TON', 'GRS'],
+    () => ['UND', 'PZ', 'MTS', 'KGS', 'GAL', 'LTS', 'TON', 'GRS', 'CUB'],
     [],
   )
 
@@ -781,7 +781,7 @@ function EditItemModal({ item, onClose, onSave }) {
   }, [])
 
   const unidadOptions = useMemo(
-    () => ['UND', 'PZ', 'MTS', 'KGS', 'GAL', 'LTS', 'TON', 'GRS'],
+    () => ['UND', 'PZ', 'MTS', 'KGS', 'GAL', 'LTS', 'TON', 'GRS', 'CUB'],
     [],
   )
 
