@@ -849,7 +849,7 @@ function EditItemModal({ item, onClose, onSave }) {
       '4 1/2',
       '5',
       '5 1/2',
-      '5 7/8',
+      '5.7 /8',
       '6',
       '6 1/2',
       '7',
