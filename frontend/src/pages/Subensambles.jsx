@@ -394,7 +394,7 @@ function ItemModal({ meta, onClose, onSave }) {
   )
 
   const medidaUnidadOptions = useMemo(
-    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS'],
+    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS', 'CUB'],
     [],
   )
 
@@ -778,7 +778,7 @@ function EditItemModal({ item, onClose, onSave }) {
   )
 
   const medidaUnidadOptions = useMemo(
-    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS'],
+    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS', 'CUB'],
     [],
   )
 
