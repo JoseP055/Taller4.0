@@ -376,12 +376,11 @@ function ItemModal({ meta, onClose, onSave }) {
   }, [ubis])
 
   const dimensionOptions = useMemo(() => {
-    const opts = ['']
-    for (let i = 1; i <= 48; i++) {
+    const opts = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8']
+    for (let i = 2; i <= 48; i++) {
       const whole = Math.floor(i / 2)
       const isHalf = i % 2 === 1
-      if (i === 1) opts.push('1/2')
-      else if (!isHalf) opts.push(String(whole))
+      if (!isHalf) opts.push(String(whole))
       else opts.push(`${whole} 1/2`)
     }
     return opts
@@ -771,12 +770,11 @@ function QrModal({ codigo, onClose }) {
 
 function EditItemModal({ item, onClose, onSave }) {
   const dimensionOptions = useMemo(() => {
-    const opts = ['']
-    for (let i = 1; i <= 48; i++) {
+    const opts = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8']
+    for (let i = 2; i <= 48; i++) {
       const whole = Math.floor(i / 2)
       const isHalf = i % 2 === 1
-      if (i === 1) opts.push('1/2')
-      else if (!isHalf) opts.push(String(whole))
+      if (!isHalf) opts.push(String(whole))
       else opts.push(`${whole} 1/2`)
     }
     return opts
