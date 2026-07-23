@@ -375,16 +375,72 @@ function ItemModal({ meta, onClose, onSave }) {
     return 'STOCK — AREA DE STOCK'
   }, [ubis])
 
-  const dimensionOptions = useMemo(() => {
-    const opts = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8']
-    for (let i = 2; i <= 48; i++) {
-      const whole = Math.floor(i / 2)
-      const isHalf = i % 2 === 1
-      if (!isHalf) opts.push(String(whole))
-      else opts.push(`${whole} 1/2`)
-    }
-    return opts
-  }, [])
+  const dimensionOptions = useMemo(
+    () => [
+      '',
+      '1/16',
+      '1/8',
+      '3/16',
+      '1/4',
+      '3/8',
+      '7/16',
+      '1/2',
+      '9/16',
+      '5/8',
+      '3/4',
+      '7/8',
+      '1',
+      '1 1/2',
+      '2',
+      '2 1/2',
+      '3',
+      '3 1/2',
+      '4',
+      '4 1/2',
+      '5',
+      '5 1/2',
+      '5 7/8',
+      '6',
+      '6 1/2',
+      '7',
+      '7 1/2',
+      '8',
+      '8 1/2',
+      '9',
+      '9 1/2',
+      '10',
+      '10 1/2',
+      '11',
+      '11 1/2',
+      '11.7',
+      '12',
+      '12 1/2',
+      '13',
+      '13 1/2',
+      '14',
+      '14 1/2',
+      '15',
+      '15 1/2',
+      '16',
+      '16 1/2',
+      '17',
+      '17 1/2',
+      '18',
+      '18 1/2',
+      '19',
+      '19 1/2',
+      '20',
+      '20 1/2',
+      '21',
+      '21 1/2',
+      '22',
+      '22 1/2',
+      '23',
+      '23 1/2',
+      '24'
+    ],
+    [],
+  )
 
   const unidadOptions = useMemo(
     () => ['UND', 'PZ', 'MTS', 'KGS', 'GAL', 'LTS', 'TON', 'GRS', 'CUB'],
@@ -392,7 +448,7 @@ function ItemModal({ meta, onClose, onSave }) {
   )
 
   const medidaUnidadOptions = useMemo(
-    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS', 'CUB'],
+    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS', 'CUB', 'TUB', 'CAJ', 'ROLL'],
     [],
   )
 
@@ -769,16 +825,72 @@ function QrModal({ codigo, onClose }) {
 }
 
 function EditItemModal({ item, onClose, onSave }) {
-  const dimensionOptions = useMemo(() => {
-    const opts = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8']
-    for (let i = 2; i <= 48; i++) {
-      const whole = Math.floor(i / 2)
-      const isHalf = i % 2 === 1
-      if (!isHalf) opts.push(String(whole))
-      else opts.push(`${whole} 1/2`)
-    }
-    return opts
-  }, [])
+  const dimensionOptions = useMemo(
+    () => [
+      '',
+      '1/16',
+      '1/8',
+      '3/16',
+      '1/4',
+      '3/8',
+      '7/16',
+      '1/2',
+      '9/16',
+      '5/8',
+      '3/4',
+      '7/8',
+      '1',
+      '1 1/2',
+      '2',
+      '2 1/2',
+      '3',
+      '3 1/2',
+      '4',
+      '4 1/2',
+      '5',
+      '5 1/2',
+      '5 7/8',
+      '6',
+      '6 1/2',
+      '7',
+      '7 1/2',
+      '8',
+      '8 1/2',
+      '9',
+      '9 1/2',
+      '10',
+      '10 1/2',
+      '11',
+      '11 1/2',
+      '11.7',
+      '12',
+      '12 1/2',
+      '13',
+      '13 1/2',
+      '14',
+      '14 1/2',
+      '15',
+      '15 1/2',
+      '16',
+      '16 1/2',
+      '17',
+      '17 1/2',
+      '18',
+      '18 1/2',
+      '19',
+      '19 1/2',
+      '20',
+      '20 1/2',
+      '21',
+      '21 1/2',
+      '22',
+      '22 1/2',
+      '23',
+      '23 1/2',
+      '24'
+    ],
+    [],
+  )
 
   const unidadOptions = useMemo(
     () => ['UND', 'PZ', 'MTS', 'KGS', 'GAL', 'LTS', 'TON', 'GRS', 'CUB'],
@@ -786,7 +898,7 @@ function EditItemModal({ item, onClose, onSave }) {
   )
 
   const medidaUnidadOptions = useMemo(
-    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS', 'CUB'],
+    () => ['', 'PULG', 'MTS', 'MM', 'CM', 'GAL', 'LTS', 'TON', 'KGS', 'GRS', 'CUB', 'TUB', 'CAJ', 'ROLL'],
     [],
   )
 
