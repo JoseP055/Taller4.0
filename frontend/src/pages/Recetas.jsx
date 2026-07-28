@@ -113,6 +113,7 @@ function RecetaFormModal({ ptOptions, materiasPrimas, subensambles, initial, onC
 
   const materiasPrimasOrdenadas = useMemo(() => [...materiasPrimas].sort(sortByNombre), [materiasPrimas])
   const subensamblesOrdenados = useMemo(() => [...subensambles].sort(sortByNombre), [subensambles])
+  const ptOptionsOrdenados = useMemo(() => [...ptOptions].sort(sortByNombre), [ptOptions])
 
   async function submit(e) {
     e.preventDefault()
@@ -155,9 +156,9 @@ function RecetaFormModal({ ptOptions, materiasPrimas, subensambles, initial, onC
               <span>Producto terminado</span>
               <select value={ptId} onChange={(e) => setPtId(e.target.value)} disabled={isSubmitting}>
                 <option value="">Selecciona…</option>
-                {ptOptions.map((p) => (
+                {ptOptionsOrdenados.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.codigo} — {p.nombre}
+                    {formatInsumoLabel(p)}
                   </option>
                 ))}
               </select>
