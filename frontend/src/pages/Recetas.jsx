@@ -83,10 +83,24 @@ function formatNumber(n) {
 
 function normalizeItems(data) {
   const rows = Array.isArray(data?.items) ? data.items : []
-  return rows.map((x) => ({ id: x.id, codigo: String(x.codigo ?? ''), nombre: x.nombre ?? '' }))
+  return rows.map((x) => ({
+    id: x.id,
+    codigo: String(x.codigo ?? ''),
+    nombre: x.nombre ?? '',
+    medida: x.medida ?? '',
+  }))
 }
 
-function RecetaFormModal({ ptOptions, insumoOptions, initial, onClose, onSaved }) {
+function formatInsumoLabel(item) {
+  const medida = String(item.medida || '').trim()
+  return medida ? `${item.codigo} — ${item.nombre} (${medida})` : `${item.codigo} — ${item.nombre}`
+}
+
+function sortByNombre(a, b) {
+  return `${a.nombre}`.localeCompare(`${b.nombre}`)
+}
+
+function RecetaFormModal({ ptOptions, materiasPrimas, subensambles, initial, onClose, onSaved }) {
   const [ptId, setPtId] = useState(initial ? String(initial.id_producto_terminado) : '')
   const [nombre, setNombre] = useState(initial?.nombre || '')
   const [items, setItems] = useState(
@@ -96,6 +110,9 @@ function RecetaFormModal({ ptOptions, insumoOptions, initial, onClose, onSaved }
   )
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const materiasPrimasOrdenadas = useMemo(() => [...materiasPrimas].sort(sortByNombre), [materiasPrimas])
+  const subensamblesOrdenados = useMemo(() => [...subensambles].sort(sortByNombre), [subensambles])
 
   async function submit(e) {
     e.preventDefault()
@@ -165,11 +182,20 @@ function RecetaFormModal({ ptOptions, insumoOptions, initial, onClose, onSaved }
                     disabled={isSubmitting}
                   >
                     <option value="">Selecciona insumo…</option>
-                    {insumoOptions.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.codigo} — {a.nombre}
-                      </option>
-                    ))}
+                    <optgroup label="Materias primas">
+                      {materiasPrimasOrdenadas.map((a) => (
+                        <option key={`mp-${a.id}`} value={a.id}>
+                          {formatInsumoLabel(a)}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Subensambles">
+                      {subensamblesOrdenados.map((a) => (
+                        <option key={`sub-${a.id}`} value={a.id}>
+                          {formatInsumoLabel(a)}
+                        </option>
+                      ))}
+                    </optgroup>
                   </select>
                   <input
                     type="number"
@@ -328,11 +354,6 @@ export default function Recetas() {
     return () => controller.abort()
   }, [refreshKey, isAdmin])
 
-  const insumoOptions = useMemo(
-    () => [...materiasPrimas, ...subensambles].sort((a, b) => `${a.nombre}`.localeCompare(`${b.nombre}`)),
-    [materiasPrimas, subensambles],
-  )
-
   const selectedReceta = useMemo(() => recetas.find((r) => r.id_receta === selectedId) || null, [recetas, selectedId])
 
   async function onToggleActiva(r) {
@@ -461,7 +482,8 @@ export default function Recetas() {
       {formOpen ? (
         <RecetaFormModal
           ptOptions={productosTerminados}
-          insumoOptions={insumoOptions}
+          materiasPrimas={materiasPrimas}
+          subensambles={subensambles}
           initial={formInitial}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
