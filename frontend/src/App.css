@@ -580,6 +580,22 @@ img {
   cursor: not-allowed;
 }
 
+/* .btn se define mas abajo en el archivo y, al tener la misma especificidad
+   que .primary, su "background" (var(--panel)) terminaba ganando en botones
+   con className="btn primary" (ej. "Aplicar" en los filtros) — el texto
+   quedaba con el color de contraste de --primary sobre el fondo de --panel,
+   invisible en modo oscuro. Esta regla, con mayor especificidad, fuerza el
+   estilo correcto sin importar el orden de las clases. */
+.btn.primary {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-color: transparent;
+}
+
+.btn.primary:hover {
+  background: var(--primary-hover);
+}
+
 .primary:focus-visible,
 .btn:focus-visible,
 .nav-link:focus-visible,
