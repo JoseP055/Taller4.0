@@ -148,7 +148,7 @@ function RecetaFormModal({ ptOptions, insumoOptions, initial, onClose, onSaved }
 
             <label className="field">
               <span>Nombre de la receta</span>
-              <input value={nombre} onChange={(e) => setNombre(e.target.value)} disabled={isSubmitting} />
+              <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} disabled={isSubmitting} />
             </label>
 
             <div className="field" style={{ gridColumn: '1 / -1' }}>

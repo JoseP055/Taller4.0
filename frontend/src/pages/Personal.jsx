@@ -130,23 +130,23 @@ function ColaboradorModal({ item, onClose, onSaved }) {
           <div className="form-grid">
             <label className="field">
               <span>Código</span>
-              <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="COL_001" required />
+              <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="COL_001" required />
             </label>
             <label className="field">
               <span>Nombre</span>
-              <input value={nombre} onChange={(e) => setNombre(e.target.value)} required />
+              <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} required />
             </label>
             <label className="field">
               <span>Apellido</span>
-              <input value={apellido} onChange={(e) => setApellido(e.target.value)} required />
+              <input value={apellido} onChange={(e) => setApellido(e.target.value.toUpperCase())} required />
             </label>
             <label className="field">
               <span>Puesto (opcional)</span>
-              <input value={puesto} onChange={(e) => setPuesto(e.target.value)} />
+              <input value={puesto} onChange={(e) => setPuesto(e.target.value.toUpperCase())} />
             </label>
             <label className="field">
               <span>Área (opcional)</span>
-              <input value={area} onChange={(e) => setArea(e.target.value)} />
+              <input value={area} onChange={(e) => setArea(e.target.value.toUpperCase())} />
             </label>
           </div>
           {error ? <div className="form-error">{error}</div> : null}

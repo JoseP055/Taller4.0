@@ -141,15 +141,15 @@ function NuevoTipoModal({ meta, onClose, onSaved }) {
             </label>
             <label className="field">
               <span>Nombre</span>
-              <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="TALADRO INALÁMBRICO" required />
+              <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} placeholder="TALADRO INALÁMBRICO" required />
             </label>
             <label className="field">
               <span>Unidad de medida</span>
-              <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="UND" />
+              <input value={unidad} onChange={(e) => setUnidad(e.target.value.toUpperCase())} placeholder="UND" />
             </label>
             <label className="field">
               <span>Descripción (opcional)</span>
-              <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Descripción general..." />
+              <input value={descripcion} onChange={(e) => setDescripcion(e.target.value.toUpperCase())} placeholder="Descripción general..." />
             </label>
           </div>
           {error ? <div className="form-error">{error}</div> : null}
@@ -245,7 +245,7 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
             </label>
             <label className="field">
               <span>Código de la unidad</span>
-              <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="HR-001" required />
+              <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="HR-001" required />
             </label>
             <label className="field">
               <span>Ubicación</span>
