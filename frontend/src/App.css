@@ -1378,8 +1378,20 @@ img {
 }
 
 .home-card-icon {
-  font-size: 28px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--secondary);
+  border: 1px solid var(--secondary-border);
+  color: var(--text);
+}
+
+.home-card-icon svg {
+  width: 22px;
+  height: 22px;
 }
 
 .home-card-title {
