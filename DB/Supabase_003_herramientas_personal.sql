@@ -414,6 +414,10 @@ $$;
 
 -- Crea (a partir de un prefijo, el código se autogenera) o edita un colaborador.
 -- Al editar, el código no cambia: solo se actualizan nombre/apellido/puesto/area.
+-- El segundo parámetro cambió de nombre (codigo_colaborador -> prefijo); Postgres
+-- no permite renombrar un parámetro con CREATE OR REPLACE, hay que dropear primero.
+DROP FUNCTION IF EXISTS personal_upsert(integer, text, text, text, text, text);
+
 CREATE OR REPLACE FUNCTION personal_upsert(
   id_colaborador integer DEFAULT NULL,
   prefijo text DEFAULT NULL,
