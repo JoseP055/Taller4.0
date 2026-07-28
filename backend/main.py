@@ -286,6 +286,9 @@ class CreateInventoryItem(BaseModel):
   detalle_adicional: str | None = Field(default=None, max_length=255)
   unidad_medida: str = Field(..., min_length=1, max_length=20)
   ubicacion_codigo: str = Field(..., min_length=1, max_length=50)
+  peso_kg: float | None = Field(default=None, ge=0)
+  area_m2: float | None = Field(default=None, ge=0)
+  factor_desperdicio_pct: float | None = Field(default=None, ge=0, le=100)
   cantidad_actual: float = Field(default=0, ge=0)
   minimo: float = Field(default=0, ge=0)
   maximo: float = Field(default=0, ge=0)
@@ -298,10 +301,17 @@ class UpdateInventoryItem(BaseModel):
   dimension_principal: str | None = Field(default=None, max_length=50)
   detalle_adicional: str | None = Field(default=None, max_length=255)
   unidad_medida: str | None = Field(default=None, min_length=1, max_length=20)
+  peso_kg: float | None = Field(default=None, ge=0)
+  area_m2: float | None = Field(default=None, ge=0)
+  factor_desperdicio_pct: float | None = Field(default=None, ge=0, le=100)
   cantidad_actual: float | None = Field(default=None, ge=0)
   minimo: float | None = Field(default=None, ge=0)
   maximo: float | None = Field(default=None, ge=0)
   punto_reorden: float | None = Field(default=None, ge=0)
+
+# kinds que soportan peso/área/factor de desperdicio (agregados via inv_set_extra_fields,
+# separado de inv_create_item/inv_update_item porque esas RPC no están versionadas en este repo)
+_EXTRA_FIELDS_KINDS = ('subensambles', 'productos-terminados')
 
 class FabricacionPayload(BaseModel):
   id_subensamble: int = Field(..., ge=1)
@@ -373,6 +383,25 @@ def create_inventory_item(kind: str, payload: CreateInventoryItem, authorization
     },
     authorization=authorization,
   )
+  if kind in _EXTRA_FIELDS_KINDS:
+    item = res.get('item') if isinstance(res, dict) else None
+    item_id = item.get('id') if isinstance(item, dict) else None
+    if item_id:
+      try:
+        _supabase_rpc(
+          'inv_set_extra_fields',
+          {
+            'id_articulo': item_id,
+            'peso_kg': payload.peso_kg,
+            'area_m2': payload.area_m2,
+            'factor_desperdicio_pct': payload.factor_desperdicio_pct if kind == 'productos-terminados' else None,
+          },
+          authorization=authorization,
+        )
+      except HTTPException:
+        # No bloquear la creación (ya ocurrió) si esto falla; el usuario puede
+        # completar peso/área/desperdicio editando el artículo recién creado.
+        pass
   _cache_invalidate_prefix(f'summary:{kind}')
   return res
 
@@ -396,6 +425,17 @@ def update_inventory_item(kind: str, id_articulo: int, payload: UpdateInventoryI
     },
     authorization=authorization,
   )
+  if kind in _EXTRA_FIELDS_KINDS and (payload.peso_kg is not None or payload.area_m2 is not None):
+    _supabase_rpc(
+      'inv_set_extra_fields',
+      {
+        'id_articulo': id_articulo,
+        'peso_kg': payload.peso_kg,
+        'area_m2': payload.area_m2,
+        'factor_desperdicio_pct': payload.factor_desperdicio_pct if kind == 'productos-terminados' else None,
+      },
+      authorization=authorization,
+    )
   _cache_invalidate_prefix(f'summary:{kind}')
   return res
 

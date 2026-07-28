@@ -252,6 +252,34 @@ function InventoryTable({
       { key: 'subcategoria', label: 'Subcategoría' },
       { key: 'medida', label: 'Medida', value: (x) => x.medida || '-' },
       {
+        key: 'pesoKg',
+        label: 'Peso (kg)',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+        render: (x) => formatNumber(x.pesoKg),
+      },
+      {
+        key: 'areaM2',
+        label: 'Área (m²)',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+        render: (x) => formatNumber(x.areaM2),
+      },
+      {
+        key: 'factorDesperdicioKg',
+        label: 'Desperdicio (kg)',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+        value: (x) => x.factorDesperdicioKg,
+        render: (x) =>
+          x.factorDesperdicioPct
+            ? `${formatNumber(x.factorDesperdicioKg)} (${x.factorDesperdicioPct}%)`
+            : formatNumber(x.factorDesperdicioKg),
+      },
+      {
         key: 'cantidad',
         label: 'Cantidad',
         type: 'number',
@@ -445,6 +473,9 @@ function ItemModal({ meta, onClose, onSave }) {
     detalle_adicional: '',
     unidad_medida: 'UND',
     ubicacion_codigo: 'STOCK',
+    peso_kg: 0,
+    area_m2: 0,
+    factor_desperdicio_pct: 0,
     cantidad_actual: 0,
     minimo: 0,
     maximo: 0,
@@ -453,6 +484,13 @@ function ItemModal({ meta, onClose, onSave }) {
 
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const desperdicioKgPreview = useMemo(() => {
+    const peso = Number(value.peso_kg)
+    const pct = Number(value.factor_desperdicio_pct)
+    if (!Number.isFinite(peso) || !Number.isFinite(pct)) return 0
+    return Math.round(peso * (pct / 100) * 1000) / 1000
+  }, [value.peso_kg, value.factor_desperdicio_pct])
 
   useEffect(() => {
     if (!value.id_subcategoria) return
@@ -482,7 +520,10 @@ function ItemModal({ meta, onClose, onSave }) {
         field === 'cantidad_actual' ||
         field === 'minimo' ||
         field === 'maximo' ||
-        field === 'punto_reorden'
+        field === 'punto_reorden' ||
+        field === 'peso_kg' ||
+        field === 'area_m2' ||
+        field === 'factor_desperdicio_pct'
       ) {
         next = raw === '' ? '' : Number(raw)
       }
@@ -550,7 +591,7 @@ function ItemModal({ meta, onClose, onSave }) {
       return
     }
 
-    const numericFields = ['cantidad_actual', 'minimo', 'maximo', 'punto_reorden']
+    const numericFields = ['cantidad_actual', 'minimo', 'maximo', 'punto_reorden', 'peso_kg', 'area_m2']
     for (const f of numericFields) {
       const v = value[f]
       if (v === '') continue
@@ -559,6 +600,13 @@ function ItemModal({ meta, onClose, onSave }) {
         setIsSubmitting(false)
         return
       }
+    }
+
+    const factorPct = value.factor_desperdicio_pct
+    if (factorPct !== '' && (!Number.isFinite(factorPct) || factorPct < 0 || factorPct > 100)) {
+      setError('El factor de desperdicio debe ser un porcentaje entre 0 y 100.')
+      setIsSubmitting(false)
+      return
     }
 
     onSave({
@@ -575,6 +623,9 @@ function ItemModal({ meta, onClose, onSave }) {
         : null,
       unidad_medida,
       ubicacion_codigo,
+      peso_kg: Number(value.peso_kg || 0),
+      area_m2: Number(value.area_m2 || 0),
+      factor_desperdicio_pct: Number(value.factor_desperdicio_pct || 0),
       cantidad_actual: Number(value.cantidad_actual || 0),
       minimo: Number(value.minimo || 0),
       maximo: Number(value.maximo || 0),
@@ -702,7 +753,45 @@ function ItemModal({ meta, onClose, onSave }) {
               />
             </label>
 
-            <div />
+            <label className="field">
+              <span>Peso (kg)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.peso_kg}
+                onChange={update('peso_kg')}
+              />
+            </label>
+
+            <label className="field">
+              <span>Área (m²)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.area_m2}
+                onChange={update('area_m2')}
+              />
+            </label>
+
+            <label className="field">
+              <span>Factor de desperdicio (%)</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={value.factor_desperdicio_pct}
+                onChange={update('factor_desperdicio_pct')}
+                placeholder="10"
+              />
+            </label>
+
+            <label className="field">
+              <span>Desperdicio calculado (kg)</span>
+              <input value={formatNumber(desperdicioKgPreview)} disabled />
+            </label>
 
             <label className="field">
               <span>Cantidad</span>
@@ -898,6 +987,9 @@ function EditItemModal({ item, onClose, onSave }) {
     unidad_medida: item?.unidad || 'UND',
     dimension_value: parsedMedida.value || '',
     dimension_unit: parsedMedida.unit || '',
+    peso_kg: String(item?.pesoKg ?? 0),
+    area_m2: String(item?.areaM2 ?? 0),
+    factor_desperdicio_pct: String(item?.factorDesperdicioPct ?? 0),
     cantidad_actual: String(item?.cantidad ?? 0),
     minimo: String(item?.minStock ?? 0),
     maximo: String(item?.maxStock ?? 0),
@@ -905,6 +997,13 @@ function EditItemModal({ item, onClose, onSave }) {
   }))
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const desperdicioKgPreview = useMemo(() => {
+    const peso = Number(value.peso_kg)
+    const pct = Number(value.factor_desperdicio_pct)
+    if (!Number.isFinite(peso) || !Number.isFinite(pct)) return 0
+    return Math.round(peso * (pct / 100) * 1000) / 1000
+  }, [value.peso_kg, value.factor_desperdicio_pct])
 
   function update(field) {
     return (e) => {
@@ -945,6 +1044,27 @@ function EditItemModal({ item, onClose, onSave }) {
     const dimension_principal =
       dimensionValue && dimensionUnit ? `${dimensionValue} ${dimensionUnit}`.toUpperCase() : null
 
+    const peso_kg = Number(String(value.peso_kg).trim())
+    if (!Number.isFinite(peso_kg) || peso_kg < 0) {
+      setError('Peso (kg) inválido.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const area_m2 = Number(String(value.area_m2).trim())
+    if (!Number.isFinite(area_m2) || area_m2 < 0) {
+      setError('Área (m²) inválida.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const factor_desperdicio_pct = Number(String(value.factor_desperdicio_pct).trim())
+    if (!Number.isFinite(factor_desperdicio_pct) || factor_desperdicio_pct < 0 || factor_desperdicio_pct > 100) {
+      setError('El factor de desperdicio debe ser un porcentaje entre 0 y 100.')
+      setIsSubmitting(false)
+      return
+    }
+
     const cantidad_actual = Number(String(value.cantidad_actual).trim())
     if (!Number.isFinite(cantidad_actual) || cantidad_actual < 0) {
       setError('Cantidad inválida.')
@@ -977,6 +1097,9 @@ function EditItemModal({ item, onClose, onSave }) {
       nombre_base,
       unidad_medida,
       dimension_principal,
+      peso_kg,
+      area_m2,
+      factor_desperdicio_pct,
       cantidad_actual,
       minimo,
       maximo,
@@ -1038,6 +1161,41 @@ function EditItemModal({ item, onClose, onSave }) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="field">
+              <span>Peso (kg)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.peso_kg}
+                onChange={update('peso_kg')}
+              />
+            </label>
+            <label className="field">
+              <span>Área (m²)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.area_m2}
+                onChange={update('area_m2')}
+              />
+            </label>
+            <label className="field">
+              <span>Factor de desperdicio (%)</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={value.factor_desperdicio_pct}
+                onChange={update('factor_desperdicio_pct')}
+              />
+            </label>
+            <label className="field">
+              <span>Desperdicio calculado (kg)</span>
+              <input value={formatNumber(desperdicioKgPreview)} disabled />
             </label>
             <label className="field">
               <span>Cantidad actual</span>
@@ -1165,6 +1323,10 @@ export default function ProductosTerminados() {
                 nombre: x.nombre ?? '',
                 subcategoria: x.subcategoria ?? '',
                 medida: x.medida ?? '',
+                pesoKg: Number(x.peso_kg ?? 0),
+                areaM2: Number(x.area_m2 ?? 0),
+                factorDesperdicioPct: Number(x.factor_desperdicio_pct ?? 0),
+                factorDesperdicioKg: Number(x.factor_desperdicio_kg ?? 0),
                 cantidad: Number(x.cantidad ?? 0),
                 unidad: x.unidad ?? '',
                 minStock: Number(x.min_stock ?? 0),

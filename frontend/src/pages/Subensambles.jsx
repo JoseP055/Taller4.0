@@ -254,6 +254,22 @@ function InventoryTable({
       { key: 'subcategoria', label: 'Subcategoría' },
       { key: 'medida', label: 'Medida', value: (x) => x.medida || '-' },
       {
+        key: 'pesoKg',
+        label: 'Peso (kg)',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+        render: (x) => formatNumber(x.pesoKg),
+      },
+      {
+        key: 'areaM2',
+        label: 'Área (m²)',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+        render: (x) => formatNumber(x.areaM2),
+      },
+      {
         key: 'cantidad',
         label: 'Cantidad',
         type: 'number',
@@ -448,6 +464,8 @@ function ItemModal({ meta, onClose, onSave }) {
     dimension_unidad: '',
     detalle_adicional: '',
     unidad_medida: 'UND',
+    peso_kg: 0,
+    area_m2: 0,
     cantidad_actual: 0,
     minimo: 0,
     maximo: 0,
@@ -485,7 +503,9 @@ function ItemModal({ meta, onClose, onSave }) {
         field === 'cantidad_actual' ||
         field === 'minimo' ||
         field === 'maximo' ||
-        field === 'punto_reorden'
+        field === 'punto_reorden' ||
+        field === 'peso_kg' ||
+        field === 'area_m2'
       ) {
         next = raw === '' ? '' : Number(raw)
       }
@@ -548,7 +568,7 @@ function ItemModal({ meta, onClose, onSave }) {
       return
     }
 
-    const numericFields = ['cantidad_actual', 'minimo', 'maximo', 'punto_reorden']
+    const numericFields = ['cantidad_actual', 'minimo', 'maximo', 'punto_reorden', 'peso_kg', 'area_m2']
     for (const f of numericFields) {
       const v = value[f]
       if (v === '') continue
@@ -573,6 +593,8 @@ function ItemModal({ meta, onClose, onSave }) {
         : null,
       unidad_medida,
       ubicacion_codigo: FIXED_LOCATION_CODE,
+      peso_kg: Number(value.peso_kg || 0),
+      area_m2: Number(value.area_m2 || 0),
       cantidad_actual: Number(value.cantidad_actual || 0),
       minimo: Number(value.minimo || 0),
       maximo: Number(value.maximo || 0),
@@ -696,7 +718,27 @@ function ItemModal({ meta, onClose, onSave }) {
               />
             </label>
 
-            <div />
+            <label className="field">
+              <span>Peso (kg)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.peso_kg}
+                onChange={update('peso_kg')}
+              />
+            </label>
+
+            <label className="field">
+              <span>Área (m²)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.area_m2}
+                onChange={update('area_m2')}
+              />
+            </label>
 
             <label className="field">
               <span>Cantidad</span>
@@ -892,6 +934,8 @@ function EditItemModal({ item, onClose, onSave }) {
     unidad_medida: item?.unidad || 'UND',
     dimension_value: parsedMedida.value || '',
     dimension_unit: parsedMedida.unit || '',
+    peso_kg: String(item?.pesoKg ?? 0),
+    area_m2: String(item?.areaM2 ?? 0),
     cantidad_actual: String(item?.cantidad ?? 0),
     minimo: String(item?.minStock ?? 0),
     maximo: String(item?.maxStock ?? 0),
@@ -939,6 +983,20 @@ function EditItemModal({ item, onClose, onSave }) {
     const dimension_principal =
       dimensionValue && dimensionUnit ? `${dimensionValue} ${dimensionUnit}`.toUpperCase() : null
 
+    const peso_kg = Number(String(value.peso_kg).trim())
+    if (!Number.isFinite(peso_kg) || peso_kg < 0) {
+      setError('Peso (kg) inválido.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const area_m2 = Number(String(value.area_m2).trim())
+    if (!Number.isFinite(area_m2) || area_m2 < 0) {
+      setError('Área (m²) inválida.')
+      setIsSubmitting(false)
+      return
+    }
+
     const cantidad_actual = Number(String(value.cantidad_actual).trim())
     if (!Number.isFinite(cantidad_actual) || cantidad_actual < 0) {
       setError('Cantidad inválida.')
@@ -971,6 +1029,8 @@ function EditItemModal({ item, onClose, onSave }) {
       nombre_base,
       unidad_medida,
       dimension_principal,
+      peso_kg,
+      area_m2,
       cantidad_actual,
       minimo,
       maximo,
@@ -1032,6 +1092,26 @@ function EditItemModal({ item, onClose, onSave }) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="field">
+              <span>Peso (kg)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.peso_kg}
+                onChange={update('peso_kg')}
+              />
+            </label>
+            <label className="field">
+              <span>Área (m²)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={value.area_m2}
+                onChange={update('area_m2')}
+              />
             </label>
             <label className="field">
               <span>Cantidad actual</span>
@@ -1155,6 +1235,8 @@ export default function Subensambles() {
                 nombre: x.nombre ?? '',
                 subcategoria: x.subcategoria ?? '',
                 medida: x.medida ?? '',
+                pesoKg: Number(x.peso_kg ?? 0),
+                areaM2: Number(x.area_m2 ?? 0),
                 cantidad: Number(x.cantidad ?? 0),
                 unidad: x.unidad ?? '',
                 minStock: Number(x.min_stock ?? 0),
