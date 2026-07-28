@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 
 const API_BASE = (() => {
@@ -241,7 +242,6 @@ export default function CreacionFabricacion() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [subensambles, setSubensambles] = useState([])
-  const [materiasPrimas, setMateriasPrimas] = useState([])
   const [productosTerminados, setProductosTerminados] = useState([])
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -253,15 +253,6 @@ export default function CreacionFabricacion() {
   const [recetaResult, setRecetaResult] = useState(null)
   const [isRecetaSubmitting, setIsRecetaSubmitting] = useState(false)
   const [recetaSuccessOpen, setRecetaSuccessOpen] = useState(false)
-
-  const [isRecetaAdminOpen, setIsRecetaAdminOpen] = useState(false)
-  const [allRecetas, setAllRecetas] = useState([])
-  const [formPtId, setFormPtId] = useState('')
-  const [formNombre, setFormNombre] = useState('')
-  const [formItems, setFormItems] = useState([{ id_articulo: '', cantidad_por_unidad: '' }])
-  const [formEditingId, setFormEditingId] = useState(null)
-  const [formError, setFormError] = useState('')
-  const [isFormSubmitting, setIsFormSubmitting] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -278,14 +269,12 @@ export default function CreacionFabricacion() {
     const requests = [
       fetchJson(`/inventario/productos-terminados/items?${qs.toString()}`, { signal: controller.signal }),
       fetchJson(`/inventario/subensambles/items?${qs.toString()}`, { signal: controller.signal }),
-      ...(isAdmin ? [fetchJson(`/inventario/materias-primas/items?${qs.toString()}`, { signal: controller.signal })] : []),
     ]
 
     Promise.all(requests)
-      .then(([ptData, subData, mpData]) => {
+      .then(([ptData, subData]) => {
         setProductosTerminados(normalizeItems(ptData))
         setSubensambles(normalizeItems(subData))
-        setMateriasPrimas(isAdmin && mpData ? normalizeItems(mpData) : [])
       })
       .catch((e) => {
         if (controller.signal.aborted) return
@@ -296,20 +285,12 @@ export default function CreacionFabricacion() {
       })
 
     return () => controller.abort()
-  }, [refreshKey, isAdmin])
+  }, [refreshKey])
 
   const ptOptions = useMemo(() => productosTerminados, [productosTerminados])
   const selectedProductoReceta = useMemo(
     () => ptOptions.find((p) => String(p.id) === String(recetaPtId)) || null,
     [ptOptions, recetaPtId],
-  )
-
-  const insumoOptions = useMemo(
-    () =>
-      [...materiasPrimas, ...subensambles].sort((a, b) =>
-        `${a.nombre}`.localeCompare(`${b.nombre}`),
-      ),
-    [materiasPrimas, subensambles],
   )
 
   useEffect(() => {
@@ -356,13 +337,6 @@ export default function CreacionFabricacion() {
   }, [selectedReceta, recetaQty])
 
   const recetaTieneFaltantes = recetaPreview.some((it) => it.insuficiente)
-
-  useEffect(() => {
-    if (!isAdmin || !isRecetaAdminOpen) return
-    fetchApi('/logistica/recetas')
-      .then((data) => setAllRecetas(Array.isArray(data) ? data : []))
-      .catch(() => {})
-  }, [isAdmin, isRecetaAdminOpen, refreshKey])
 
   async function onSubmitReceta(e) {
     e.preventDefault()
@@ -551,239 +525,10 @@ export default function CreacionFabricacion() {
 
         {isAdmin ? (
           <div className="card">
-            <div
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-            >
-              <div className="card-title" style={{ marginBottom: 0 }}>
-                Asociar recetas a productos terminados
-              </div>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setIsRecetaAdminOpen((v) => !v)}
-              >
-                {isRecetaAdminOpen ? 'Ocultar' : 'Mostrar'}
-              </button>
+            <div className="muted">
+              ¿Necesitas crear, editar o desactivar recetas? Ve al módulo de{' '}
+              <Link to="/app/recetas">Recetas</Link>.
             </div>
-
-            {isRecetaAdminOpen ? (
-              <>
-                <div className="muted" style={{ marginTop: 12 }}>
-                  Crea, edita, activa o elimina recetas que definan los insumos requeridos por cada producto terminado.
-                </div>
-                <form
-                  className="form-grid"
-                  onSubmit={async (e) => {
-                    e.preventDefault()
-                    setFormError('')
-                    const items = formItems
-                      .filter((it) => it.id_articulo && it.cantidad_por_unidad)
-                      .map((it) => ({
-                        id_articulo: Number(it.id_articulo),
-                        cantidad_por_unidad: Number(it.cantidad_por_unidad),
-                      }))
-                    if (!formPtId || !formNombre.trim() || items.length === 0) {
-                      setFormError('Completa producto terminado, nombre y al menos un insumo.')
-                      return
-                    }
-                    setIsFormSubmitting(true)
-                    try {
-                      const body = {
-                        id_producto_terminado: Number(formPtId),
-                        nombre: formNombre.toUpperCase(),
-                        items,
-                      }
-                      if (formEditingId) {
-                        await fetchApi(`/logistica/recetas/${formEditingId}`, { method: 'PATCH', body })
-                      } else {
-                        await fetchApi('/logistica/recetas', { method: 'POST', body })
-                      }
-                      setFormPtId('')
-                      setFormNombre('')
-                      setFormItems([{ id_articulo: '', cantidad_por_unidad: '' }])
-                      setFormEditingId(null)
-                      setRefreshKey((k) => k + 1)
-                    } catch (e2) {
-                      setFormError(e2?.message || 'No se pudo guardar la receta')
-                    } finally {
-                      setIsFormSubmitting(false)
-                    }
-                  }}
-                >
-                  <label className="field">
-                    <span>Producto terminado</span>
-                    <select value={formPtId} onChange={(e) => setFormPtId(e.target.value)} disabled={isFormSubmitting}>
-                      <option value="">Selecciona…</option>
-                      {ptOptions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.codigo} — {p.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="field">
-                    <span>Nombre de la receta</span>
-                    <input
-                      value={formNombre}
-                      onChange={(e) => setFormNombre(e.target.value)}
-                      disabled={isFormSubmitting}
-                    />
-                  </label>
-
-                  <div className="field" style={{ gridColumn: '1 / -1' }}>
-                    <span>Insumos de la receta</span>
-                    {formItems.map((it, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                        <select
-                          value={it.id_articulo}
-                          onChange={(e) => {
-                            const next = [...formItems]
-                            next[idx] = { ...next[idx], id_articulo: e.target.value }
-                            setFormItems(next)
-                          }}
-                          disabled={isFormSubmitting}
-                        >
-                          <option value="">Selecciona insumo…</option>
-                          {insumoOptions.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.codigo} — {a.nombre}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          placeholder="cantidad por unidad"
-                          value={it.cantidad_por_unidad}
-                          onChange={(e) => {
-                            const next = [...formItems]
-                            next[idx] = { ...next[idx], cantidad_por_unidad: e.target.value }
-                            setFormItems(next)
-                          }}
-                          disabled={isFormSubmitting}
-                        />
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => setFormItems(formItems.filter((_, i) => i !== idx))}
-                          disabled={isFormSubmitting || formItems.length === 1}
-                        >
-                          Quitar
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn"
-                      style={{ marginTop: 8 }}
-                      onClick={() =>
-                        setFormItems([
-                          ...formItems,
-                          { id_articulo: '', cantidad_por_unidad: '' },
-                        ])
-                      }
-                      disabled={isFormSubmitting}
-                    >
-                      + Agregar insumo
-                    </button>
-                  </div>
-
-                  {formError ? <div className="form-error">{formError}</div> : null}
-
-                  <div className="form-actions">
-                    <button className="btn primary" type="submit" disabled={isFormSubmitting}>
-                      {formEditingId ? 'Guardar cambios' : 'Crear receta'}
-                    </button>
-                    {formEditingId ? (
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => {
-                          setFormEditingId(null)
-                          setFormPtId('')
-                          setFormNombre('')
-                          setFormItems([{ id_articulo: '', cantidad_por_unidad: '' }])
-                        }}
-                      >
-                        Cancelar edición
-                      </button>
-                    ) : null}
-                  </div>
-                </form>
-
-                <div className="table" style={{ marginTop: 16 }}>
-                  {allRecetas.length ? (
-                    allRecetas.map((r) => (
-                      <div key={r.id_receta} className="kv-row">
-                        <div className="kv-k">
-                          {r.producto_terminado} — {r.nombre}
-                        </div>
-                        <div
-                          className="kv-v"
-                          style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-                        >
-                          <span className="muted">
-                            {Array.isArray(r.items) ? r.items.length : 0} insumo(s)
-                            {r.activa ? '' : ' · inactiva'}
-                          </span>
-                          <button
-                            className="btn"
-                            onClick={async () => {
-                              try {
-                                await fetchApi(`/logistica/recetas/${r.id_receta}/activa`, {
-                                  method: 'PATCH',
-                                  body: { activa: !r.activa },
-                                })
-                                setRefreshKey((k) => k + 1)
-                              } catch (e2) {
-                                setFormError(e2?.message || 'No se pudo cambiar el estado de la receta')
-                              }
-                            }}
-                          >
-                            {r.activa ? 'Desactivar' : 'Activar'}
-                          </button>
-                          <button
-                            className="btn"
-                            onClick={() => {
-                              setFormEditingId(r.id_receta)
-                              setFormPtId(String(r.id_producto_terminado))
-                              setFormNombre(r.nombre)
-                              setFormItems(
-                                (r.items || []).map((it) => ({
-                                  id_articulo: String(it.id_articulo),
-                                  cantidad_por_unidad: String(it.cantidad_por_unidad),
-                                })),
-                              )
-                            }}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            className="btn"
-                            onClick={async () => {
-                              try {
-                                await fetchApi(`/logistica/recetas/${r.id_receta}`, {
-                                  method: 'DELETE',
-                                })
-                                setRefreshKey((k) => k + 1)
-                              } catch (e2) {
-                                setFormError(e2?.message || 'No se pudo eliminar la receta')
-                              }
-                            }}
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="muted">No hay recetas registradas.</div>
-                  )}
-                </div>
-              </>
-            ) : null}
           </div>
         ) : null}
       </div>

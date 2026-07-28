@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
 
 const TITLES_BY_PATH = [
+  { prefix: '/app/home', title: 'Inicio' },
   { prefix: '/app/dashboard', title: 'Dashboard' },
   { prefix: '/app/analytics', title: 'Analytics' },
   { prefix: '/app/inventario/materias-primas', title: 'Materias primas' },
@@ -10,8 +11,9 @@ const TITLES_BY_PATH = [
   { prefix: '/app/inventario/productos-terminados', title: 'Productos terminados' },
   { prefix: '/app/inventario/bobinas-de-lamina', title: 'Bobinas de lámina' },
   { prefix: '/app/recursos/herramientas', title: 'Herramientas' },
-  { prefix: '/app/recursos/suministros', title: 'Suministros' },
   { prefix: '/app/recursos/maquinaria', title: 'Maquinaria' },
+  { prefix: '/app/recursos/personal', title: 'Personal' },
+  { prefix: '/app/recetas', title: 'Recetas' },
   { prefix: '/app/logistica/creacion-fabricacion', title: 'Creación/Fabricación' },
   { prefix: '/app/logistica/movimientos', title: 'Movimientos' },
   { prefix: '/app/configuracion', title: 'Configuración' },

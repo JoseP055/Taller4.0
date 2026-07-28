@@ -38,6 +38,11 @@ img {
   flex-direction: column;
   gap: 12px;
   box-shadow: inset -1px 0 0 rgba(7, 24, 33, 0.03);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  align-self: start;
 }
 
 .brand {
@@ -1345,6 +1350,180 @@ img {
   padding: 22px 12px;
   text-align: center;
   color: var(--muted);
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.home-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  text-decoration: none;
+  color: var(--text);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.home-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--secondary-border);
+  box-shadow: var(--shadow);
+}
+
+.home-card-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.home-card-title {
+  font-weight: 800;
+}
+
+.home-card-desc {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.th-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.th-filter-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.col-filter-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 2px 5px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.col-filter-btn:hover {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+.col-filter-btn.active {
+  color: var(--text);
+  background: var(--secondary);
+  border-color: var(--secondary-border);
+}
+
+.col-filter-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.col-filter-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  min-width: 220px;
+  max-width: 280px;
+  box-shadow: var(--shadow);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.col-filter-search {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  width: 100%;
+}
+
+.col-filter-sort {
+  display: flex;
+  gap: 6px;
+}
+
+.col-filter-sort .btn {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.col-filter-list-head {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+.col-filter-link {
+  border: none;
+  background: transparent;
+  color: var(--secondary-border);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 4px;
+}
+
+.col-filter-link:hover {
+  text-decoration: underline;
+}
+
+.col-filter-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.col-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  padding: 3px 2px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.col-filter-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.col-filter-actions .btn {
+  flex: 1;
+  padding: 7px 8px;
+  font-size: 12px;
 }
 
 .modal-overlay {

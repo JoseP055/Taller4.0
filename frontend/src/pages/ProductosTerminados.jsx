@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
+import FilterableTable from '../components/FilterableTable.jsx'
 
 const API_BASE = (() => {
   const env = String(import.meta.env.VITE_API_URL || '').trim()
@@ -244,9 +245,54 @@ function InventoryTable({
   onEdit,
   onQr,
 }) {
-  const filtered = useMemo(() => {
-    return items
-  }, [items])
+  const columns = useMemo(
+    () => [
+      { key: 'codigo', label: 'Código', render: (x) => <span className="mono">{x.codigo}</span> },
+      { key: 'nombre', label: 'Nombre' },
+      { key: 'subcategoria', label: 'Subcategoría' },
+      { key: 'medida', label: 'Medida', value: (x) => x.medida || '-' },
+      {
+        key: 'cantidad',
+        label: 'Cantidad',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+        render: (x) => formatNumber(x.cantidad),
+      },
+      { key: 'unidad', label: 'Unidad' },
+      {
+        key: 'minStock',
+        label: 'Mín. Stock',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+        render: (x) => formatNumber(x.minStock),
+      },
+      { key: 'ubicacion', label: 'Ubicación' },
+      {
+        key: 'estado',
+        label: 'Estado',
+        type: 'enum',
+        render: (x) => <span className="pill">{x.estado}</span>,
+      },
+      {
+        key: 'accion',
+        label: 'Acción',
+        filterable: false,
+        render: (x) => (
+          <div className="actions inline">
+            <button type="button" className="btn icon" onClick={() => onEdit(x)} title="Editar">
+              Editar
+            </button>
+            <button type="button" className="btn icon qr" onClick={() => onQr(x)} title="QR">
+              QR
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [onEdit, onQr],
+  )
 
   return (
     <div className="card">
@@ -292,75 +338,12 @@ function InventoryTable({
         </button>
       </div>
 
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Código</th>
-              <th>Nombre</th>
-              <th>Subcategoría</th>
-              <th>Medida</th>
-              <th>Cantidad</th>
-              <th>Unidad</th>
-              <th>Mín. Stock</th>
-              <th>Ubicación</th>
-              <th>Estado</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={10} className="empty">
-                  Cargando...
-                </td>
-              </tr>
-            ) : filtered.length ? (
-              filtered.map((x) => (
-                <tr key={x.id}>
-                  <td className="mono">{x.codigo}</td>
-                  <td>{x.nombre}</td>
-                  <td>{x.subcategoria}</td>
-                  <td>{x.medida || '-'}</td>
-                  <td className="num">{formatNumber(x.cantidad)}</td>
-                  <td>{x.unidad}</td>
-                  <td className="num">{formatNumber(x.minStock)}</td>
-                  <td>{x.ubicacion}</td>
-                  <td>
-                    <span className="pill">{x.estado}</span>
-                  </td>
-                  <td>
-                    <div className="actions inline">
-                      <button
-                        type="button"
-                        className="btn icon"
-                        onClick={() => onEdit(x)}
-                        title="Editar"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn icon qr"
-                        onClick={() => onQr(x)}
-                        title="QR"
-                      >
-                        QR
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={10} className="empty">
-                  No hay resultados para el filtro actual.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <FilterableTable
+        columns={columns}
+        rows={items}
+        isLoading={isLoading}
+        emptyMessage="No hay resultados para el filtro actual."
+      />
     </div>
   )
 }

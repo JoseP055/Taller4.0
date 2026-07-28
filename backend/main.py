@@ -514,6 +514,195 @@ def borrar_asociacion(id_subensamble: int, authorization: str | None = Header(de
   _require_admin(authorization)
   return _supabase_rpc('inv_assoc_delete', {'id_subensamble': id_subensamble}, authorization=authorization)
 
+
+class HerramientaTipoPayload(BaseModel):
+  id_subcategoria: int = Field(..., ge=1)
+  nombre_base: str = Field(..., min_length=1, max_length=150)
+  descripcion: str | None = Field(default=None, max_length=255)
+  unidad_medida: str = Field(default='UND', min_length=1, max_length=20)
+
+
+class HerramientaUnidadPayload(BaseModel):
+  id_articulo: int = Field(..., ge=1)
+  codigo_herramienta: str = Field(..., min_length=1, max_length=50)
+  id_ubicacion: int | None = Field(default=None, ge=1)
+  observaciones: str | None = Field(default=None, max_length=255)
+
+
+class HerramientaAsignarPayload(BaseModel):
+  id_colaborador: int = Field(..., ge=1)
+  observaciones: str | None = Field(default=None, max_length=255)
+
+
+class HerramientaDevolverPayload(BaseModel):
+  observaciones: str | None = Field(default=None, max_length=255)
+
+
+@app.get('/herramientas/meta')
+def herramientas_meta(authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  cache_key = 'herr:meta'
+  cached, ok = _cache_get(cache_key)
+  if ok:
+    return cached
+  data = _supabase_rpc('herr_meta', {}, authorization=authorization)
+  _cache_set(cache_key, data, ttl_seconds=60)
+  return data
+
+
+@app.get('/herramientas/items')
+def herramientas_items(
+  search: str = Query('', max_length=100),
+  estatus: str = Query('Todas', max_length=20),
+  limit: int = Query(200, ge=1, le=1000),
+  offset: int = Query(0, ge=0),
+  authorization: str | None = Header(default=None),
+):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc(
+    'herr_items',
+    {'search': search, 'estatus': estatus, 'lim': limit, 'off': offset},
+    authorization=authorization,
+  )
+
+
+@app.post('/herramientas/tipos')
+def crear_herramienta_tipo(payload: HerramientaTipoPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  res = _supabase_rpc(
+    'herr_create_tipo',
+    {
+      'id_subcategoria': payload.id_subcategoria,
+      'nombre_base': payload.nombre_base,
+      'descripcion': payload.descripcion,
+      'unidad_medida': payload.unidad_medida,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('herr:meta')
+  return res
+
+
+@app.post('/herramientas/unidades')
+def crear_herramienta_unidad(payload: HerramientaUnidadPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc(
+    'herr_create_unidad',
+    {
+      'id_articulo': payload.id_articulo,
+      'codigo_herramienta': payload.codigo_herramienta,
+      'id_ubicacion': payload.id_ubicacion,
+      'observaciones': payload.observaciones,
+    },
+    authorization=authorization,
+  )
+
+
+@app.post('/herramientas/{id_herramienta}/asignar')
+def asignar_herramienta(id_herramienta: int, payload: HerramientaAsignarPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc(
+    'herr_asignar',
+    {
+      'id_herramienta': id_herramienta,
+      'id_colaborador': payload.id_colaborador,
+      'observaciones': payload.observaciones,
+    },
+    authorization=authorization,
+  )
+
+
+@app.post('/herramientas/{id_herramienta}/devolver')
+def devolver_herramienta(id_herramienta: int, payload: HerramientaDevolverPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc(
+    'herr_devolver',
+    {'id_herramienta': id_herramienta, 'observaciones': payload.observaciones},
+    authorization=authorization,
+  )
+
+
+class ColaboradorPayload(BaseModel):
+  codigo_colaborador: str = Field(..., min_length=1, max_length=20)
+  nombre: str = Field(..., min_length=1, max_length=100)
+  apellido: str = Field(..., min_length=1, max_length=100)
+  puesto: str | None = Field(default=None, max_length=100)
+  area: str | None = Field(default=None, max_length=100)
+
+
+class ColaboradorActivoPayload(BaseModel):
+  activo: bool
+
+
+@app.get('/personal/colaboradores')
+def listar_colaboradores(
+  search: str = Query('', max_length=100),
+  authorization: str | None = Header(default=None),
+):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc('personal_list', {'search': search}, authorization=authorization)
+
+
+@app.post('/personal/colaboradores')
+def crear_colaborador(payload: ColaboradorPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  res = _supabase_rpc(
+    'personal_upsert',
+    {
+      'id_colaborador': None,
+      'codigo_colaborador': payload.codigo_colaborador,
+      'nombre': payload.nombre,
+      'apellido': payload.apellido,
+      'puesto': payload.puesto,
+      'area': payload.area,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('herr:meta')
+  return res
+
+
+@app.patch('/personal/colaboradores/{id_colaborador}')
+def editar_colaborador(id_colaborador: int, payload: ColaboradorPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  res = _supabase_rpc(
+    'personal_upsert',
+    {
+      'id_colaborador': id_colaborador,
+      'codigo_colaborador': payload.codigo_colaborador,
+      'nombre': payload.nombre,
+      'apellido': payload.apellido,
+      'puesto': payload.puesto,
+      'area': payload.area,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('herr:meta')
+  return res
+
+
+@app.patch('/personal/colaboradores/{id_colaborador}/activo')
+def activar_colaborador(id_colaborador: int, payload: ColaboradorActivoPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  res = _supabase_rpc(
+    'personal_set_active',
+    {'id_colaborador': id_colaborador, 'activo': payload.activo},
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('herr:meta')
+  return res
+
+
 @app.post('/logistica/movimientos')
 def crear_movimiento(payload: MovimientoPayload, authorization: str | None = Header(default=None)):
   _require_app_access(authorization)

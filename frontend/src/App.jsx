@@ -7,17 +7,21 @@ import Login from './pages/Login.jsx'
 import CreacionFabricacion from './pages/CreacionFabricacion.jsx'
 import Configuracion from './pages/Configuracion.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import Home from './pages/Home.jsx'
 import Analytics from './pages/Analytics.jsx'
 import MateriasPrimas from './pages/MateriasPrimas.jsx'
 import ProductosTerminados from './pages/ProductosTerminados.jsx'
 import Subensambles from './pages/Subensambles.jsx'
 import Movimientos from './pages/Movimientos.jsx'
+import Recetas from './pages/Recetas.jsx'
+import Herramientas from './pages/Herramientas.jsx'
+import Personal from './pages/Personal.jsx'
 import SimplePage from './pages/SimplePage.jsx'
 
 function IndexRedirect() {
   const { role } = useAuth()
   if (role === 'zebra') return <Navigate to="logistica/creacion-fabricacion" replace />
-  return <Navigate to="dashboard" replace />
+  return <Navigate to="home" replace />
 }
 
 function RequireRole({ allow, children }) {
@@ -36,6 +40,14 @@ function App() {
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AppLayout />}>
           <Route index element={<IndexRedirect />} />
+          <Route
+            path="home"
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <Home />
+              </RequireRole>
+            }
+          />
           <Route
             path="dashboard"
             element={
@@ -90,15 +102,7 @@ function App() {
             path="recursos/herramientas"
             element={
               <RequireRole allow={['admin', 'user']}>
-                <SimplePage title="Herramientas" />
-              </RequireRole>
-            }
-          />
-          <Route
-            path="recursos/suministros"
-            element={
-              <RequireRole allow={['admin', 'user']}>
-                <SimplePage title="Suministros" />
+                <Herramientas />
               </RequireRole>
             }
           />
@@ -110,7 +114,23 @@ function App() {
               </RequireRole>
             }
           />
+          <Route
+            path="recursos/personal"
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <Personal />
+              </RequireRole>
+            }
+          />
 
+          <Route
+            path="recetas"
+            element={
+              <RequireRole allow={['admin', 'user']}>
+                <Recetas />
+              </RequireRole>
+            }
+          />
           <Route
             path="logistica/creacion-fabricacion"
             element={<CreacionFabricacion />}

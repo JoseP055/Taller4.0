@@ -38,6 +38,10 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
         <nav className="nav">
           {!isZebra ? (
             <>
+              <NavLink to="/app/home" className={linkClassName} onClick={onNav}>
+              Inicio
+              </NavLink>
+
               <NavLink to="/app/dashboard" className={linkClassName} end onClick={onNav}>
               Dashboard
               </NavLink>
@@ -70,14 +74,18 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
                 <NavLink to="/app/recursos/herramientas" className={linkClassName} onClick={onNav}>
                   Herramientas
                 </NavLink>
-                <NavLink to="/app/recursos/suministros" className={linkClassName} onClick={onNav}>
-                  Suministros
-                </NavLink>
                 <NavLink to="/app/recursos/maquinaria" className={linkClassName} onClick={onNav}>
                   Maquinaria
                 </NavLink>
+                <NavLink to="/app/recursos/personal" className={linkClassName} onClick={onNav}>
+                  Personal
+                </NavLink>
               </div>
             </details>
+
+            <NavLink to="/app/recetas" className={linkClassName} onClick={onNav}>
+              Recetas
+            </NavLink>
             </>
           ) : null}
 
