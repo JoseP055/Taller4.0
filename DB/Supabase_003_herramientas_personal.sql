@@ -322,7 +322,7 @@ DECLARE
 BEGIN
   term := NULLIF(BTRIM(search), '');
   RETURN (
-    SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r->>'nombre'), '[]'::jsonb)
+    SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.nombre), '[]'::jsonb)
     FROM (
       SELECT
         c.id_colaborador AS id,
