@@ -84,9 +84,26 @@ function NuevoTipoModal({ meta, onClose, onSaved }) {
   const [nombre, setNombre] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [unidad, setUnidad] = useState('UND')
+  const [codigoSap, setCodigoSap] = useState('')
   const [idSubcategoria, setIdSubcategoria] = useState(subcats[0]?.id ?? '')
+  const [codigoPreview, setCodigoPreview] = useState(null)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!idSubcategoria) return
+    const controller = new AbortController()
+    fetchJson(`/herramientas/next-codigo?id_subcategoria=${encodeURIComponent(idSubcategoria)}`, {
+      signal: controller.signal,
+    })
+      .then((data) => setCodigoPreview(data?.codigo_articulo ?? null))
+      .catch((e) => {
+        if (controller.signal.aborted) return
+        setCodigoPreview(null)
+        setError(e?.message || 'No se pudo generar el código')
+      })
+    return () => controller.abort()
+  }, [idSubcategoria])
 
   async function submit(e) {
     e.preventDefault()
@@ -95,8 +112,18 @@ function NuevoTipoModal({ meta, onClose, onSaved }) {
       setError('Selecciona una subcategoría.')
       return
     }
+    if (!codigoPreview) {
+      setError('No se pudo generar el código del artículo.')
+      return
+    }
     if (!nombre.trim()) {
       setError('El nombre es obligatorio.')
+      return
+    }
+    const codigoSapRaw = codigoSap.trim()
+    const codigo_sap = codigoSapRaw ? Number(codigoSapRaw) : null
+    if (codigoSapRaw && (!Number.isFinite(codigo_sap) || codigo_sap <= 0)) {
+      setError('Código SAP inválido.')
       return
     }
     setIsSubmitting(true)
@@ -108,6 +135,7 @@ function NuevoTipoModal({ meta, onClose, onSaved }) {
           nombre_base: nombre.trim().toUpperCase(),
           descripcion: descripcion.trim() ? descripcion.trim().toUpperCase() : null,
           unidad_medida: unidad.trim().toUpperCase() || 'UND',
+          codigo_sap,
         },
       })
       onSaved()
@@ -130,8 +158,23 @@ function NuevoTipoModal({ meta, onClose, onSaved }) {
         <form className="modal-body" onSubmit={submit}>
           <div className="form-grid">
             <label className="field">
+              <span>Código (Artículo)</span>
+              <input value={codigoPreview ? String(codigoPreview) : 'Generando...'} disabled />
+            </label>
+            <label className="field">
+              <span>Código SAP (opcional)</span>
+              <input value={codigoSap} onChange={(e) => setCodigoSap(e.target.value)} placeholder="123456" inputMode="numeric" />
+            </label>
+            <label className="field">
               <span>Subcategoría</span>
-              <select value={idSubcategoria} onChange={(e) => setIdSubcategoria(e.target.value)} disabled={!subcats.length}>
+              <select
+                value={idSubcategoria}
+                onChange={(e) => {
+                  setCodigoPreview(null)
+                  setIdSubcategoria(e.target.value)
+                }}
+                disabled={!subcats.length}
+              >
                 {subcats.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.nombre}
@@ -154,7 +197,7 @@ function NuevoTipoModal({ meta, onClose, onSaved }) {
           </div>
           {error ? <div className="form-error">{error}</div> : null}
           <div className="modal-actions">
-            <button className="primary" type="submit" disabled={isSubmitting}>
+            <button className="primary" type="submit" disabled={isSubmitting || !codigoPreview}>
               {isSubmitting ? 'Guardando...' : 'Guardar'}
             </button>
           </div>

@@ -9,19 +9,34 @@
 -- Ninguna de esas tablas necesita ALTER: ya existen y ya tienen RLS deshabilitada.
 -- =========================================================
 
+-- Migra el seed de una corrida anterior de este script (códigos '50'/'501'/'502')
+-- a los códigos correctos '70'/'201'/'202'. No hace nada si nunca se corrió así.
+UPDATE categoria SET codigo_categoria = '70'
+WHERE codigo_categoria = '50' AND nombre_categoria = 'HERRAMIENTAS';
+
+UPDATE subcategoria sc SET codigo_subcategoria = '201'
+FROM categoria c
+WHERE sc.id_categoria = c.id_categoria AND c.codigo_categoria = '70' AND sc.codigo_subcategoria = '501';
+
+UPDATE subcategoria sc SET codigo_subcategoria = '202'
+FROM categoria c
+WHERE sc.id_categoria = c.id_categoria AND c.codigo_categoria = '70' AND sc.codigo_subcategoria = '502';
+
 -- Seed: categoría/subcategorías para el catálogo de tipos de herramienta
+-- 70 HERRAMIENTAS / 201 HERRAMIENTA MANUAL / 202 HERRAMIENTA ELECTRICA
+-- (mismo esquema de código que materias primas: codigo_categoria + codigo_subcategoria + secuencia)
 INSERT INTO categoria (codigo_categoria, nombre_categoria)
-VALUES ('50', 'HERRAMIENTAS')
+VALUES ('70', 'HERRAMIENTAS')
 ON CONFLICT (codigo_categoria) DO NOTHING;
 
 INSERT INTO subcategoria (id_categoria, codigo_subcategoria, nombre_subcategoria)
-SELECT c.id_categoria, '501', 'HERRAMIENTA MANUAL'
-FROM categoria c WHERE c.codigo_categoria = '50'
+SELECT c.id_categoria, '201', 'HERRAMIENTA MANUAL'
+FROM categoria c WHERE c.codigo_categoria = '70'
 ON CONFLICT (id_categoria, codigo_subcategoria) DO NOTHING;
 
 INSERT INTO subcategoria (id_categoria, codigo_subcategoria, nombre_subcategoria)
-SELECT c.id_categoria, '502', 'HERRAMIENTA ELECTRICA'
-FROM categoria c WHERE c.codigo_categoria = '50'
+SELECT c.id_categoria, '202', 'HERRAMIENTA ELECTRICA'
+FROM categoria c WHERE c.codigo_categoria = '70'
 ON CONFLICT (id_categoria, codigo_subcategoria) DO NOTHING;
 
 INSERT INTO ubicacion (codigo_ubicacion, nombre_ubicacion, tipo_ubicacion)
@@ -159,11 +174,16 @@ $$;
 -- ---------------------------------------------------------
 -- Crear tipo de herramienta (articulo, es_herramienta = true)
 -- ---------------------------------------------------------
+-- La versión anterior de esta función tenía 4 parámetros (sin codigo_sap);
+-- se elimina explícitamente para que no quede como un overload muerto.
+DROP FUNCTION IF EXISTS herr_create_tipo(integer, text, text, text);
+
 CREATE OR REPLACE FUNCTION herr_create_tipo(
   id_subcategoria integer,
   nombre_base text,
   descripcion text DEFAULT NULL,
-  unidad_medida text DEFAULT 'UND'
+  unidad_medida text DEFAULT 'UND',
+  codigo_sap bigint DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -187,9 +207,9 @@ BEGIN
   v_codigo := herr_next_codigo(herr_create_tipo.id_subcategoria);
 
   INSERT INTO articulo (
-    codigo_articulo, id_categoria, id_subcategoria, nombre_base, descripcion, unidad_medida, es_herramienta
+    codigo_articulo, codigo_sap, id_categoria, id_subcategoria, nombre_base, descripcion, unidad_medida, es_herramienta
   ) VALUES (
-    v_codigo, v_id_categoria, herr_create_tipo.id_subcategoria, UPPER(BTRIM(nombre_base)),
+    v_codigo, herr_create_tipo.codigo_sap, v_id_categoria, herr_create_tipo.id_subcategoria, UPPER(BTRIM(nombre_base)),
     NULLIF(UPPER(BTRIM(COALESCE(descripcion, ''))), ''), UPPER(BTRIM(COALESCE(unidad_medida, 'UND'))), true
   )
   RETURNING id_articulo INTO v_id_articulo;
@@ -420,7 +440,7 @@ $$;
 GRANT EXECUTE ON FUNCTION herr_next_codigo(integer) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION herr_meta() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION herr_items(text, text, integer, integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION herr_create_tipo(integer, text, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION herr_create_tipo(integer, text, text, text, bigint) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION herr_create_unidad(integer, text, integer, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION herr_asignar(integer, integer, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION herr_devolver(integer, text) TO anon, authenticated;

@@ -520,6 +520,7 @@ class HerramientaTipoPayload(BaseModel):
   nombre_base: str = Field(..., min_length=1, max_length=150)
   descripcion: str | None = Field(default=None, max_length=255)
   unidad_medida: str = Field(default='UND', min_length=1, max_length=20)
+  codigo_sap: int | None = Field(default=None, ge=1)
 
 
 class HerramientaUnidadPayload(BaseModel):
@@ -568,6 +569,18 @@ def herramientas_items(
   )
 
 
+@app.get('/herramientas/next-codigo')
+def herramientas_next_codigo(id_subcategoria: int = Query(..., ge=1), authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  codigo_articulo = _supabase_rpc(
+    'herr_next_codigo',
+    {'id_subcategoria': id_subcategoria},
+    authorization=authorization,
+  )
+  return {'codigo_articulo': codigo_articulo}
+
+
 @app.post('/herramientas/tipos')
 def crear_herramienta_tipo(payload: HerramientaTipoPayload, authorization: str | None = Header(default=None)):
   ctx = _require_app_access(authorization)
@@ -579,6 +592,7 @@ def crear_herramienta_tipo(payload: HerramientaTipoPayload, authorization: str |
       'nombre_base': payload.nombre_base,
       'descripcion': payload.descripcion,
       'unidad_medida': payload.unidad_medida,
+      'codigo_sap': payload.codigo_sap,
     },
     authorization=authorization,
   )
