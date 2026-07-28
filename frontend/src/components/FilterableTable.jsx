@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 function defaultValue(col, row) {
   return col.value ? col.value(row) : row[col.key]
@@ -21,10 +22,22 @@ function compareValues(a, b, type) {
   return String(a ?? '').localeCompare(String(b ?? ''), 'es', { numeric: true, sensitivity: 'base' })
 }
 
-function ColumnFilterPopover({ col, uniqueValues, activeFilter, onChange, onClose }) {
+const POPOVER_WIDTH = 260
+
+function ColumnFilterPopover({ col, anchorRect, uniqueValues, activeFilter, onChange, onClose }) {
   const ref = useRef(null)
   const [text, setText] = useState(activeFilter?.text || '')
   const [selected, setSelected] = useState(() => activeFilter?.values ? new Set(activeFilter.values) : null)
+  const [style, setStyle] = useState(null)
+
+  useLayoutEffect(() => {
+    if (!anchorRect) return
+    const margin = 8
+    const top = anchorRect.bottom + 6
+    const maxLeft = Math.max(margin, window.innerWidth - POPOVER_WIDTH - margin)
+    const left = Math.min(Math.max(anchorRect.left, margin), maxLeft)
+    setStyle({ position: 'fixed', top, left, width: POPOVER_WIDTH })
+  }, [anchorRect])
 
   useEffect(() => {
     function onDocClick(e) {
@@ -33,11 +46,18 @@ function ColumnFilterPopover({ col, uniqueValues, activeFilter, onChange, onClos
     function onKey(e) {
       if (e.key === 'Escape') onClose()
     }
+    function onScrollOrResize() {
+      onClose()
+    }
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onScrollOrResize)
     return () => {
       document.removeEventListener('mousedown', onDocClick)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
     }
   }, [onClose])
 
@@ -74,8 +94,10 @@ function ColumnFilterPopover({ col, uniqueValues, activeFilter, onChange, onClos
     onClose()
   }
 
-  return (
-    <div className="col-filter-popover" ref={ref}>
+  if (!style) return null
+
+  return createPortal(
+    <div className="col-filter-popover" ref={ref} style={style}>
       {col.type !== 'enum' ? (
         <input
           className="col-filter-search"
@@ -129,7 +151,8 @@ function ColumnFilterPopover({ col, uniqueValues, activeFilter, onChange, onClos
           Aplicar
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -143,7 +166,7 @@ export default function FilterableTable({
 }) {
   const [filters, setFilters] = useState({})
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
-  const [openKey, setOpenKey] = useState(null)
+  const [openState, setOpenState] = useState(null)
 
   const uniqueValuesByKey = useMemo(() => {
     const map = {}
@@ -197,79 +220,85 @@ export default function FilterableTable({
     setSort({ key: null, dir: 'asc' })
   }
 
+  function toggleOpen(key, e) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setOpenState((s) => (s && s.key === key ? null : { key, rect }))
+  }
+
   return (
-    <div className="table-wrap">
-      {hasActiveFilters ? (
-        <div className="col-filter-toolbar">
-          <button type="button" className="btn" onClick={clearAllFilters}>
-            Limpiar todos los filtros
-          </button>
-        </div>
-      ) : null}
-      <table className="table">
-        <thead>
-          <tr>
-            {columns.map((col) => {
-              const isFilterable = col.filterable !== false
-              const isActive = Boolean(filters[col.key]?.text || filters[col.key]?.values)
-              return (
-                <th key={col.key} style={col.align ? { textAlign: col.align } : undefined}>
-                  <div className="th-inner">
-                    <span>{col.label}</span>
-                    {isFilterable ? (
-                      <span className="th-filter-wrap">
-                        <button
-                          type="button"
-                          className={isActive ? 'col-filter-btn active' : 'col-filter-btn'}
-                          onClick={() => setOpenKey((k) => (k === col.key ? null : col.key))}
-                          aria-label={`Filtrar ${col.label}`}
-                          title={`Filtrar ${col.label}`}
-                        >
-                          ▾
-                        </button>
-                        {openKey === col.key ? (
-                          <ColumnFilterPopover
-                            col={col}
-                            uniqueValues={uniqueValuesByKey[col.key] || []}
-                            activeFilter={filters[col.key]}
-                            onChange={(next) => updateFilter(col.key, next)}
-                            onClose={() => setOpenKey(null)}
-                          />
-                        ) : null}
-                      </span>
-                    ) : null}
-                  </div>
-                </th>
-              )
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {isLoading ? (
+    <div className="filterable-table">
+      <div className="col-filter-toolbar">
+        <button type="button" className="btn" onClick={clearAllFilters} disabled={!hasActiveFilters}>
+          Limpiar todos los filtros
+        </button>
+      </div>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={columns.length} className="empty">
-                {loadingMessage}
-              </td>
+              {columns.map((col) => {
+                const isFilterable = col.filterable !== false
+                const isActive = Boolean(filters[col.key]?.text || filters[col.key]?.values)
+                return (
+                  <th key={col.key} style={col.align ? { textAlign: col.align } : undefined}>
+                    <div className="th-inner">
+                      <span>{col.label}</span>
+                      {isFilterable ? (
+                        <span className="th-filter-wrap">
+                          <button
+                            type="button"
+                            className={isActive ? 'col-filter-btn active' : 'col-filter-btn'}
+                            onClick={(e) => toggleOpen(col.key, e)}
+                            aria-label={`Filtrar ${col.label}`}
+                            title={`Filtrar ${col.label}`}
+                          >
+                            ▾
+                          </button>
+                          {openState?.key === col.key ? (
+                            <ColumnFilterPopover
+                              col={col}
+                              anchorRect={openState.rect}
+                              uniqueValues={uniqueValuesByKey[col.key] || []}
+                              activeFilter={filters[col.key]}
+                              onChange={(next) => updateFilter(col.key, next)}
+                              onClose={() => setOpenState(null)}
+                            />
+                          ) : null}
+                        </span>
+                      ) : null}
+                    </div>
+                  </th>
+                )
+              })}
             </tr>
-          ) : filteredRows.length ? (
-            filteredRows.map((row) => (
-              <tr key={rowKey(row)}>
-                {columns.map((col) => (
-                  <td key={col.key} className={col.className} style={col.align ? { textAlign: col.align } : undefined}>
-                    {col.render ? col.render(row) : defaultDisplay(col, row)}
-                  </td>
-                ))}
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={columns.length} className="empty">
+                  {loadingMessage}
+                </td>
               </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={columns.length} className="empty">
-                {emptyMessage}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            ) : filteredRows.length ? (
+              filteredRows.map((row) => (
+                <tr key={rowKey(row)}>
+                  {columns.map((col) => (
+                    <td key={col.key} className={col.className} style={col.align ? { textAlign: col.align } : undefined}>
+                      {col.render ? col.render(row) : defaultDisplay(col, row)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={columns.length} className="empty">
+                  {emptyMessage}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
