@@ -28,6 +28,9 @@ export default function AppLayout() {
   const location = useLocation()
   const title = resolveTitle(location.pathname)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => localStorage.getItem('climatisa_sidebar_collapsed') === '1',
+  )
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light')
 
   useEffect(() => {
@@ -39,9 +42,18 @@ export default function AppLayout() {
     localStorage.setItem('climatisa_theme', theme)
   }, [theme])
 
+  useEffect(() => {
+    localStorage.setItem('climatisa_sidebar_collapsed', isCollapsed ? '1' : '0')
+  }, [isCollapsed])
+
   return (
-    <div className="app-shell">
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+    <div className={`app-shell${isCollapsed ? ' collapsed' : ''}`}>
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        collapsed={isCollapsed}
+        onToggleCollapse={() => setIsCollapsed((v) => !v)}
+      />
       <div className="app-main">
         <div className="topbar">
           <div className="topbar-left">

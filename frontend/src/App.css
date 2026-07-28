@@ -107,6 +107,7 @@ img {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid transparent;
@@ -115,6 +116,53 @@ img {
   cursor: pointer;
   text-align: left;
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-collapse-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.sidebar-collapse-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.sidebar-collapse-btn svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 160ms ease;
 }
 
 .nav-link:hover {
@@ -599,6 +647,47 @@ img {
 
   .sidebar.open {
     transform: translateX(0);
+  }
+}
+
+@media (min-width: 901px) {
+  .app-shell {
+    transition: grid-template-columns 180ms ease;
+  }
+
+  .app-shell.collapsed {
+    grid-template-columns: 84px 1fr;
+  }
+
+  .sidebar.collapsed {
+    padding: 16px 10px;
+  }
+
+  .sidebar.collapsed .brand {
+    padding: 8px 2px 12px;
+  }
+
+  .sidebar.collapsed .brand-mark {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sidebar.collapsed .brand-meta,
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .nav-group-title {
+    display: none;
+  }
+
+  .sidebar.collapsed .sidebar-collapse-btn {
+    margin-left: 0;
+  }
+
+  .sidebar.collapsed .nav-link {
+    justify-content: center;
+  }
+
+  .sidebar.collapsed .nav-group {
+    padding: 4px;
   }
 }
 
@@ -1361,6 +1450,8 @@ img {
 .home-card {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   gap: 6px;
   padding: 18px;
   border-radius: 16px;

@@ -130,6 +130,35 @@ export function IconSwap(props) {
   )
 }
 
+export function IconHome(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6 10v10h12V10" />
+      <path d="M10 20v-6h4v6" />
+    </svg>
+  )
+}
+
+export function IconLogout(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4" />
+      <path d="M14 16l4-4-4-4" />
+      <path d="M18 12H9" />
+    </svg>
+  )
+}
+
+export function IconChevronsLeft(props) {
+  return (
+    <svg {...base} {...props}>
+      <polyline points="13 5 7 12 13 19" />
+      <polyline points="18 5 12 12 18 19" />
+    </svg>
+  )
+}
+
 export function IconSliders(props) {
   return (
     <svg {...base} {...props}>
