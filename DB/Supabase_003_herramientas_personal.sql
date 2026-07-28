@@ -91,7 +91,7 @@ AS $$
       SELECT jsonb_agg(jsonb_build_object('id', sc.id_subcategoria, 'nombre', sc.nombre_subcategoria) ORDER BY sc.nombre_subcategoria)
       FROM subcategoria sc
       JOIN categoria c ON c.id_categoria = sc.id_categoria
-      WHERE c.codigo_categoria = '50' AND sc.activo = true AND c.activo = true
+      WHERE c.codigo_categoria = '70' AND sc.activo = true AND c.activo = true
     ), '[]'::jsonb),
     'ubicaciones', COALESCE((
       SELECT jsonb_agg(jsonb_build_object('id', u.id_ubicacion, 'codigo', u.codigo_ubicacion, 'nombre', u.nombre_ubicacion) ORDER BY u.nombre_ubicacion)
