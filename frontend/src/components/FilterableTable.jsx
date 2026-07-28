@@ -46,18 +46,24 @@ function ColumnFilterPopover({ col, anchorRect, uniqueValues, activeFilter, onCh
     function onKey(e) {
       if (e.key === 'Escape') onClose()
     }
-    function onScrollOrResize() {
+    function onScroll(e) {
+      // Ignora el scroll que ocurre dentro del propio popover (la lista de
+      // checkboxes tiene su propio overflow); solo cierra si scrollea algo afuera.
+      if (ref.current && e.target && ref.current.contains(e.target)) return
+      onClose()
+    }
+    function onResize() {
       onClose()
     }
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onKey)
-    window.addEventListener('scroll', onScrollOrResize, true)
-    window.addEventListener('resize', onScrollOrResize)
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onResize)
     return () => {
       document.removeEventListener('mousedown', onDocClick)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('scroll', onScrollOrResize, true)
-      window.removeEventListener('resize', onScrollOrResize)
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
     }
   }, [onClose])
 
