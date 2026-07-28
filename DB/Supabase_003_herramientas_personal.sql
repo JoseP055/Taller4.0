@@ -369,9 +369,54 @@ BEGIN
 END;
 $$;
 
+-- Código correlativo por prefijo, ej: prefijo 'COL_TI' -> 'COL_TI_0001', 'COL_TI_0002'...
+-- El combobox del formulario sugiere prefijos ya usados (personal_prefijos), pero
+-- acepta cualquier prefijo nuevo que el usuario escriba.
+CREATE OR REPLACE FUNCTION personal_next_codigo(prefijo text)
+RETURNS text
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  p text;
+  next_seq integer;
+  candidate text;
+BEGIN
+  p := UPPER(BTRIM(COALESCE(prefijo, '')));
+  IF p = '' THEN
+    RAISE EXCEPTION 'Prefijo requerido';
+  END IF;
+
+  SELECT COUNT(*) + 1 INTO next_seq
+  FROM colaborador c
+  WHERE c.codigo_colaborador = p OR c.codigo_colaborador LIKE p || '\_%' ESCAPE '\';
+
+  LOOP
+    candidate := p || '_' || lpad(next_seq::text, 4, '0');
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM colaborador WHERE codigo_colaborador = candidate);
+    next_seq := next_seq + 1;
+  END LOOP;
+
+  RETURN candidate;
+END;
+$$;
+
+-- Prefijos ya usados (código sin el sufijo numérico final), para poblar el combobox
+CREATE OR REPLACE FUNCTION personal_prefijos()
+RETURNS jsonb
+LANGUAGE sql
+AS $$
+  SELECT COALESCE(jsonb_agg(DISTINCT prefijo ORDER BY prefijo), '[]'::jsonb)
+  FROM (
+    SELECT regexp_replace(codigo_colaborador, '_[0-9]+$', '') AS prefijo
+    FROM colaborador
+  ) x;
+$$;
+
+-- Crea (a partir de un prefijo, el código se autogenera) o edita un colaborador.
+-- Al editar, el código no cambia: solo se actualizan nombre/apellido/puesto/area.
 CREATE OR REPLACE FUNCTION personal_upsert(
   id_colaborador integer DEFAULT NULL,
-  codigo_colaborador text DEFAULT NULL,
+  prefijo text DEFAULT NULL,
   nombre text DEFAULT NULL,
   apellido text DEFAULT NULL,
   puesto text DEFAULT NULL,
@@ -382,6 +427,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_id integer;
+  v_codigo text;
 BEGIN
   IF nombre IS NULL OR BTRIM(nombre) = '' THEN
     RAISE EXCEPTION 'Nombre requerido';
@@ -389,33 +435,34 @@ BEGIN
   IF apellido IS NULL OR BTRIM(apellido) = '' THEN
     RAISE EXCEPTION 'Apellido requerido';
   END IF;
-  IF codigo_colaborador IS NULL OR BTRIM(codigo_colaborador) = '' THEN
-    RAISE EXCEPTION 'Código requerido';
-  END IF;
 
   IF id_colaborador IS NULL THEN
+    IF prefijo IS NULL OR BTRIM(prefijo) = '' THEN
+      RAISE EXCEPTION 'Prefijo de código requerido';
+    END IF;
+    v_codigo := personal_next_codigo(prefijo);
+
     INSERT INTO colaborador (codigo_colaborador, nombre, apellido, puesto, area)
     VALUES (
-      UPPER(BTRIM(codigo_colaborador)), UPPER(BTRIM(nombre)), UPPER(BTRIM(apellido)),
+      v_codigo, UPPER(BTRIM(nombre)), UPPER(BTRIM(apellido)),
       NULLIF(UPPER(BTRIM(COALESCE(puesto, ''))), ''), NULLIF(UPPER(BTRIM(COALESCE(area, ''))), '')
     )
     RETURNING colaborador.id_colaborador INTO v_id;
   ELSE
     UPDATE colaborador SET
-      codigo_colaborador = UPPER(BTRIM(codigo_colaborador)),
       nombre = UPPER(BTRIM(nombre)),
       apellido = UPPER(BTRIM(apellido)),
       puesto = NULLIF(UPPER(BTRIM(COALESCE(puesto, ''))), ''),
       area = NULLIF(UPPER(BTRIM(COALESCE(area, ''))), '')
     WHERE colaborador.id_colaborador = personal_upsert.id_colaborador
-    RETURNING colaborador.id_colaborador INTO v_id;
+    RETURNING colaborador.id_colaborador, colaborador.codigo_colaborador INTO v_id, v_codigo;
 
     IF v_id IS NULL THEN
       RAISE EXCEPTION 'Colaborador no encontrado';
     END IF;
   END IF;
 
-  RETURN jsonb_build_object('ok', true, 'id_colaborador', v_id);
+  RETURN jsonb_build_object('ok', true, 'id_colaborador', v_id, 'codigo_colaborador', v_codigo);
 END;
 $$;
 
@@ -445,6 +492,8 @@ GRANT EXECUTE ON FUNCTION herr_create_unidad(integer, text, integer, text) TO an
 GRANT EXECUTE ON FUNCTION herr_asignar(integer, integer, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION herr_devolver(integer, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION personal_list(text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION personal_next_codigo(text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION personal_prefijos() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION personal_upsert(integer, text, text, text, text, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION personal_set_active(integer, boolean) TO anon, authenticated;
 

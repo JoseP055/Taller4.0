@@ -642,8 +642,15 @@ def devolver_herramienta(id_herramienta: int, payload: HerramientaDevolverPayloa
   )
 
 
-class ColaboradorPayload(BaseModel):
-  codigo_colaborador: str = Field(..., min_length=1, max_length=20)
+class ColaboradorCreatePayload(BaseModel):
+  prefijo: str = Field(..., min_length=1, max_length=20)
+  nombre: str = Field(..., min_length=1, max_length=100)
+  apellido: str = Field(..., min_length=1, max_length=100)
+  puesto: str | None = Field(default=None, max_length=100)
+  area: str | None = Field(default=None, max_length=100)
+
+
+class ColaboradorUpdatePayload(BaseModel):
   nombre: str = Field(..., min_length=1, max_length=100)
   apellido: str = Field(..., min_length=1, max_length=100)
   puesto: str | None = Field(default=None, max_length=100)
@@ -664,15 +671,30 @@ def listar_colaboradores(
   return _supabase_rpc('personal_list', {'search': search}, authorization=authorization)
 
 
+@app.get('/personal/prefijos')
+def listar_prefijos_colaborador(authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc('personal_prefijos', {}, authorization=authorization)
+
+
+@app.get('/personal/next-codigo')
+def personal_next_codigo(prefijo: str = Query(..., min_length=1, max_length=20), authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  codigo_colaborador = _supabase_rpc('personal_next_codigo', {'prefijo': prefijo}, authorization=authorization)
+  return {'codigo_colaborador': codigo_colaborador}
+
+
 @app.post('/personal/colaboradores')
-def crear_colaborador(payload: ColaboradorPayload, authorization: str | None = Header(default=None)):
+def crear_colaborador(payload: ColaboradorCreatePayload, authorization: str | None = Header(default=None)):
   ctx = _require_app_access(authorization)
   _require_not_zebra(ctx)
   res = _supabase_rpc(
     'personal_upsert',
     {
       'id_colaborador': None,
-      'codigo_colaborador': payload.codigo_colaborador,
+      'prefijo': payload.prefijo,
       'nombre': payload.nombre,
       'apellido': payload.apellido,
       'puesto': payload.puesto,
@@ -685,14 +707,13 @@ def crear_colaborador(payload: ColaboradorPayload, authorization: str | None = H
 
 
 @app.patch('/personal/colaboradores/{id_colaborador}')
-def editar_colaborador(id_colaborador: int, payload: ColaboradorPayload, authorization: str | None = Header(default=None)):
+def editar_colaborador(id_colaborador: int, payload: ColaboradorUpdatePayload, authorization: str | None = Header(default=None)):
   ctx = _require_app_access(authorization)
   _require_not_zebra(ctx)
   res = _supabase_rpc(
     'personal_upsert',
     {
       'id_colaborador': id_colaborador,
-      'codigo_colaborador': payload.codigo_colaborador,
       'nombre': payload.nombre,
       'apellido': payload.apellido,
       'puesto': payload.puesto,

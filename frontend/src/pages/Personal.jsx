@@ -80,7 +80,10 @@ function StatCard({ label, value }) {
 }
 
 function ColaboradorModal({ item, onClose, onSaved }) {
-  const [codigo, setCodigo] = useState(item?.codigo || '')
+  const isEdit = Boolean(item)
+  const [prefijos, setPrefijos] = useState([])
+  const [prefijo, setPrefijo] = useState('')
+  const [codigoPreview, setCodigoPreview] = useState(null)
   const [nombre, setNombre] = useState(item?.nombre || '')
   const [apellido, setApellido] = useState(item?.apellido || '')
   const [puesto, setPuesto] = useState(item?.puesto && item.puesto !== '-' ? item.puesto : '')
@@ -88,26 +91,69 @@ function ColaboradorModal({ item, onClose, onSaved }) {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  useEffect(() => {
+    if (isEdit) return
+    const controller = new AbortController()
+    fetchJson('/personal/prefijos', { signal: controller.signal })
+      .then((data) => setPrefijos(Array.isArray(data) ? data : []))
+      .catch(() => {})
+    return () => controller.abort()
+  }, [isEdit])
+
+  useEffect(() => {
+    if (isEdit) return
+    if (!prefijo.trim()) {
+      setCodigoPreview(null)
+      return
+    }
+    const controller = new AbortController()
+    const handle = setTimeout(() => {
+      fetchJson(`/personal/next-codigo?prefijo=${encodeURIComponent(prefijo.trim())}`, {
+        signal: controller.signal,
+      })
+        .then((data) => setCodigoPreview(data?.codigo_colaborador ?? null))
+        .catch((e) => {
+          if (controller.signal.aborted) return
+          setCodigoPreview(null)
+          setError(e?.message || 'No se pudo generar el código')
+        })
+    }, 300)
+    return () => {
+      controller.abort()
+      clearTimeout(handle)
+    }
+  }, [prefijo, isEdit])
+
   async function submit(e) {
     e.preventDefault()
     setError('')
-    if (!codigo.trim() || !nombre.trim() || !apellido.trim()) {
-      setError('Código, nombre y apellido son obligatorios.')
+    if (!isEdit && !prefijo.trim()) {
+      setError('Selecciona o escribe un prefijo de código.')
+      return
+    }
+    if (!isEdit && !codigoPreview) {
+      setError('No se pudo generar el código del colaborador.')
+      return
+    }
+    if (!nombre.trim() || !apellido.trim()) {
+      setError('Nombre y apellido son obligatorios.')
       return
     }
     setIsSubmitting(true)
     try {
       const body = {
-        codigo_colaborador: codigo.trim().toUpperCase(),
         nombre: nombre.trim().toUpperCase(),
         apellido: apellido.trim().toUpperCase(),
         puesto: puesto.trim() ? puesto.trim().toUpperCase() : null,
         area: area.trim() ? area.trim().toUpperCase() : null,
       }
-      if (item) {
+      if (isEdit) {
         await fetchApi(`/personal/colaboradores/${item.id}`, { method: 'PATCH', body })
       } else {
-        await fetchApi('/personal/colaboradores', { method: 'POST', body })
+        await fetchApi('/personal/colaboradores', {
+          method: 'POST',
+          body: { ...body, prefijo: prefijo.trim().toUpperCase() },
+        })
       }
       onSaved()
     } catch (e2) {
@@ -121,17 +167,41 @@ function ColaboradorModal({ item, onClose, onSaved }) {
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal">
         <div className="modal-head">
-          <div className="modal-title">{item ? 'Editar colaborador' : 'Nuevo colaborador'}</div>
+          <div className="modal-title">{isEdit ? 'Editar colaborador' : 'Nuevo colaborador'}</div>
           <button type="button" className="btn" onClick={onClose}>
             Cerrar
           </button>
         </div>
         <form className="modal-body" onSubmit={submit}>
           <div className="form-grid">
-            <label className="field">
-              <span>Código</span>
-              <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="COL_001" required />
-            </label>
+            {isEdit ? (
+              <label className="field">
+                <span>Código</span>
+                <input value={item.codigo} disabled />
+              </label>
+            ) : (
+              <>
+                <label className="field">
+                  <span>Prefijo de código</span>
+                  <input
+                    list="colaborador-prefijos"
+                    value={prefijo}
+                    onChange={(e) => setPrefijo(e.target.value.toUpperCase())}
+                    placeholder="COL_TI"
+                    required
+                  />
+                  <datalist id="colaborador-prefijos">
+                    {prefijos.map((p) => (
+                      <option key={p} value={p} />
+                    ))}
+                  </datalist>
+                </label>
+                <label className="field">
+                  <span>Código (auto)</span>
+                  <input value={codigoPreview ? codigoPreview : 'Generando...'} disabled />
+                </label>
+              </>
+            )}
             <label className="field">
               <span>Nombre</span>
               <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} required />
@@ -151,7 +221,7 @@ function ColaboradorModal({ item, onClose, onSaved }) {
           </div>
           {error ? <div className="form-error">{error}</div> : null}
           <div className="modal-actions">
-            <button className="primary" type="submit" disabled={isSubmitting}>
+            <button className="primary" type="submit" disabled={isSubmitting || (!isEdit && !codigoPreview)}>
               {isSubmitting ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
