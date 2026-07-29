@@ -519,6 +519,7 @@ export default function CreacionFabricacion() {
                 {ptOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.codigo} — {p.nombre}
+                    {p.medida ? ` (${p.medida})` : ''}
                   </option>
                 ))}
               </select>
