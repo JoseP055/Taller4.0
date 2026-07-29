@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
+import ItemPicker from '../components/ItemPicker.jsx'
 
 const API_BASE = (() => {
   const env = String(import.meta.env.VITE_API_URL || '').trim()
@@ -239,6 +240,7 @@ function ItemInfo({ title, item }) {
 export default function CreacionFabricacion() {
   const { role } = useAuth()
   const isAdmin = role === 'admin'
+  const [vista, setVista] = useState('fabricacion')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [subensambles, setSubensambles] = useState([])
@@ -253,6 +255,14 @@ export default function CreacionFabricacion() {
   const [recetaResult, setRecetaResult] = useState(null)
   const [isRecetaSubmitting, setIsRecetaSubmitting] = useState(false)
   const [recetaSuccessOpen, setRecetaSuccessOpen] = useState(false)
+
+  const [creacionSearch, setCreacionSearch] = useState('')
+  const [creacionSelectedId, setCreacionSelectedId] = useState('')
+  const [creacionCantidad, setCreacionCantidad] = useState('')
+  const [creacionError, setCreacionError] = useState('')
+  const [creacionResult, setCreacionResult] = useState(null)
+  const [isCreacionSubmitting, setIsCreacionSubmitting] = useState(false)
+  const [creacionSuccessOpen, setCreacionSuccessOpen] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -338,6 +348,71 @@ export default function CreacionFabricacion() {
 
   const recetaTieneFaltantes = recetaPreview.some((it) => it.insuficiente)
 
+  const filteredSubensambles = useMemo(() => {
+    const term = creacionSearch.trim().toLowerCase()
+    if (!term) return subensambles
+    return subensambles.filter((x) =>
+      `${x.codigo} ${x.nombre} ${x.subcategoria} ${x.medida}`.toLowerCase().includes(term),
+    )
+  }, [subensambles, creacionSearch])
+
+  const selectedSubensamble = useMemo(
+    () => subensambles.find((x) => String(x.id) === String(creacionSelectedId)) || null,
+    [subensambles, creacionSelectedId],
+  )
+
+  function pickSubensambleByCodigo(raw) {
+    const code = String(raw || '').trim()
+    if (!code) return
+    const found = subensambles.find((x) => String(x.codigo) === code) || null
+    if (!found) {
+      setCreacionError(`No se encontró subensamble con código ${code}.`)
+      return
+    }
+    setCreacionError('')
+    setCreacionSelectedId(String(found.id))
+    setCreacionSearch('')
+  }
+
+  const creacionQty = useMemo(() => {
+    const n = Number(creacionCantidad)
+    return creacionCantidad === '' ? null : Number.isNaN(n) ? NaN : n
+  }, [creacionCantidad])
+
+  async function onSubmitCreacion(e) {
+    e.preventDefault()
+    setCreacionError('')
+    setCreacionResult(null)
+
+    if (!selectedSubensamble) {
+      setCreacionError('Selecciona un subensamble.')
+      return
+    }
+    if (creacionQty === null || Number.isNaN(creacionQty) || creacionQty <= 0) {
+      setCreacionError('Ingresa una cantidad válida.')
+      return
+    }
+
+    setIsCreacionSubmitting(true)
+    try {
+      const res = await fetchApi('/logistica/creacion-subensamble', {
+        method: 'POST',
+        body: {
+          id_articulo: selectedSubensamble.id,
+          cantidad: creacionQty,
+          referencia: 'CREACION_SUBENSAMBLE',
+        },
+      })
+      setCreacionResult({ ...res, subensamble: selectedSubensamble })
+      setCreacionSuccessOpen(true)
+      setRefreshKey((k) => k + 1)
+    } catch (e2) {
+      setCreacionError(e2?.message || 'No se pudo registrar la creación')
+    } finally {
+      setIsCreacionSubmitting(false)
+    }
+  }
+
   async function onSubmitReceta(e) {
     e.preventDefault()
     setRecetaError('')
@@ -385,6 +460,25 @@ export default function CreacionFabricacion() {
       <div className="page-body">
         {error ? <div className="form-error">{error}</div> : null}
 
+        <div className="segmented" role="tablist" aria-label="Vista">
+          <button
+            type="button"
+            className={vista === 'fabricacion' ? 'seg active' : 'seg'}
+            onClick={() => setVista('fabricacion')}
+          >
+            Fabricación
+          </button>
+          <button
+            type="button"
+            className={vista === 'creacion' ? 'seg active' : 'seg'}
+            onClick={() => setVista('creacion')}
+          >
+            Creación
+          </button>
+        </div>
+
+        {vista === 'fabricacion' ? (
+        <>
         <SuccessModal
           open={recetaSuccessOpen}
           title="Fabricación registrada"
@@ -531,6 +625,112 @@ export default function CreacionFabricacion() {
             </div>
           </div>
         ) : null}
+        </>
+        ) : (
+        <>
+        <SuccessModal
+          open={creacionSuccessOpen}
+          title="Stock actualizado"
+          onAccept={() => {
+            setCreacionSuccessOpen(false)
+            setCreacionResult(null)
+            setCreacionSearch('')
+            setCreacionSelectedId('')
+            setCreacionCantidad('')
+          }}
+        >
+          {creacionResult ? (
+            <div className="kv">
+              <div className="kv-row">
+                <div className="kv-k">Subensamble</div>
+                <div className="kv-v">
+                  {creacionResult.subensamble?.codigo} — {creacionResult.subensamble?.nombre}
+                </div>
+              </div>
+              <div className="kv-row">
+                <div className="kv-k">Stock</div>
+                <div className="kv-v">
+                  {formatNumber(asNumber(creacionResult.antes, 0))} → {formatNumber(asNumber(creacionResult.despues, 0))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </SuccessModal>
+
+        <div className="card">
+          <div className="card-title">Agregar subensamble al inventario</div>
+          <form className="form-grid" onSubmit={onSubmitCreacion}>
+            <label className="field" style={{ gridColumn: '1 / -1' }}>
+              <span>Buscar subensamble</span>
+              <input
+                value={creacionSearch}
+                onChange={(e) => setCreacionSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  pickSubensambleByCodigo(creacionSearch)
+                }}
+                placeholder="Escanear código o buscar por nombre, dimensión..."
+                disabled={isLoading}
+              />
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                {isLoading ? 'Cargando...' : `Mostrando ${filteredSubensambles.length} subensambles.`}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <ItemPicker
+                  items={filteredSubensambles}
+                  selectedId={creacionSelectedId}
+                  onPick={(id) => setCreacionSelectedId(id)}
+                  disabled={isLoading}
+                  pageSize={5}
+                  resetKey={`sub:${creacionSearch}`}
+                  emptyText={!subensambles.length ? 'No hay subensambles registrados.' : 'No hay resultados.'}
+                />
+              </div>
+            </label>
+
+            <label className="field">
+              <span>Cantidad a agregar</span>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={creacionCantidad}
+                onChange={(e) => setCreacionCantidad(e.target.value)}
+                disabled={isLoading}
+              />
+            </label>
+
+            {creacionError ? <div className="form-error">{creacionError}</div> : null}
+
+            <div className="form-actions">
+              <button
+                className="btn primary"
+                type="submit"
+                disabled={isLoading || isCreacionSubmitting || !selectedSubensamble}
+              >
+                {isCreacionSubmitting ? 'Procesando...' : 'Agregar al inventario'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setCreacionSearch('')
+                  setCreacionSelectedId('')
+                  setCreacionCantidad('')
+                  setCreacionError('')
+                }}
+                disabled={isCreacionSubmitting}
+              >
+                Limpiar
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <ItemInfo title="Subensamble seleccionado" item={selectedSubensamble} />
+        </>
+        )}
       </div>
     </section>
   )

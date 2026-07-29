@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
 import FilterableTable from '../components/FilterableTable.jsx'
+import ItemPicker from '../components/ItemPicker.jsx'
 
 const API_BASE = (() => {
   const env = String(import.meta.env.VITE_API_URL || '').trim()
@@ -106,14 +107,40 @@ function RecetaFormModal({ ptOptions, materiasPrimas, subensambles, initial, onC
   const [items, setItems] = useState(
     initial?.items?.length
       ? initial.items.map((it) => ({ id_articulo: String(it.id_articulo), cantidad_por_unidad: String(it.cantidad_por_unidad) }))
-      : [{ id_articulo: '', cantidad_por_unidad: '' }],
+      : [],
   )
+  const [insumoSearch, setInsumoSearch] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const materiasPrimasOrdenadas = useMemo(() => [...materiasPrimas].sort(sortByNombre), [materiasPrimas])
-  const subensamblesOrdenados = useMemo(() => [...subensambles].sort(sortByNombre), [subensambles])
   const ptOptionsOrdenados = useMemo(() => [...ptOptions].sort(sortByNombre), [ptOptions])
+
+  const insumoOptions = useMemo(() => {
+    const mp = materiasPrimas.map((a) => ({ ...a, subcategoria: 'Materia prima' }))
+    const sub = subensambles.map((a) => ({ ...a, subcategoria: 'Subensamble' }))
+    return [...mp, ...sub].sort(sortByNombre)
+  }, [materiasPrimas, subensambles])
+
+  const filteredInsumos = useMemo(() => {
+    const term = insumoSearch.trim().toLowerCase()
+    if (!term) return insumoOptions
+    return insumoOptions.filter((a) => `${a.codigo} ${a.nombre} ${a.medida}`.toLowerCase().includes(term))
+  }, [insumoOptions, insumoSearch])
+
+  function addInsumo(idArticulo) {
+    setItems((prev) => {
+      if (prev.some((it) => it.id_articulo === String(idArticulo))) return prev
+      return [...prev, { id_articulo: String(idArticulo), cantidad_por_unidad: '' }]
+    })
+  }
+
+  function removeInsumo(idArticulo) {
+    setItems((prev) => prev.filter((it) => it.id_articulo !== String(idArticulo)))
+  }
+
+  function updateCantidad(idArticulo, value) {
+    setItems((prev) => prev.map((it) => (it.id_articulo === String(idArticulo) ? { ...it, cantidad_por_unidad: value } : it)))
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -170,66 +197,65 @@ function RecetaFormModal({ ptOptions, materiasPrimas, subensambles, initial, onC
             </label>
 
             <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <span>Insumos de la receta</span>
-              {items.map((it, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                  <select
-                    value={it.id_articulo}
-                    onChange={(e) => {
-                      const next = [...items]
-                      next[idx] = { ...next[idx], id_articulo: e.target.value }
-                      setItems(next)
-                    }}
-                    disabled={isSubmitting}
-                  >
-                    <option value="">Selecciona insumo…</option>
-                    <optgroup label="Materias primas">
-                      {materiasPrimasOrdenadas.map((a) => (
-                        <option key={`mp-${a.id}`} value={a.id}>
-                          {formatInsumoLabel(a)}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Subensambles">
-                      {subensamblesOrdenados.map((a) => (
-                        <option key={`sub-${a.id}`} value={a.id}>
-                          {formatInsumoLabel(a)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="cantidad por unidad"
-                    value={it.cantidad_por_unidad}
-                    onChange={(e) => {
-                      const next = [...items]
-                      next[idx] = { ...next[idx], cantidad_por_unidad: e.target.value }
-                      setItems(next)
-                    }}
-                    disabled={isSubmitting}
-                  />
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                    disabled={isSubmitting || items.length === 1}
-                  >
-                    Quitar
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="btn"
-                style={{ marginTop: 8 }}
-                onClick={() => setItems([...items, { id_articulo: '', cantidad_por_unidad: '' }])}
+              <span>Buscar insumo (materia prima o subensamble)</span>
+              <input
+                value={insumoSearch}
+                onChange={(e) => setInsumoSearch(e.target.value)}
+                placeholder="Buscar por nombre, código o medida..."
                 disabled={isSubmitting}
-              >
-                + Agregar insumo
-              </button>
+              />
+              <div style={{ marginTop: 8 }}>
+                <ItemPicker
+                  items={filteredInsumos}
+                  selectedId={null}
+                  onPick={(id) => addInsumo(id)}
+                  disabled={isSubmitting}
+                  pageSize={5}
+                  resetKey={`insumo:${insumoSearch}`}
+                  emptyText="No hay insumos que coincidan con la búsqueda."
+                />
+              </div>
+            </div>
+
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <span>Insumos de la receta</span>
+              {items.length ? (
+                items.map((it) => {
+                  const insumo = insumoOptions.find((a) => String(a.id) === it.id_articulo)
+                  return (
+                    <div
+                      key={it.id_articulo}
+                      style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}
+                    >
+                      <div style={{ flex: 1, minWidth: 220 }}>
+                        {insumo ? formatInsumoLabel(insumo) : `Artículo #${it.id_articulo}`}
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="cantidad por unidad"
+                        value={it.cantidad_por_unidad}
+                        onChange={(e) => updateCantidad(it.id_articulo, e.target.value)}
+                        disabled={isSubmitting}
+                        style={{ maxWidth: 180 }}
+                      />
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => removeInsumo(it.id_articulo)}
+                        disabled={isSubmitting}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Buscá arriba y elegí los insumos que necesita esta receta.
+                </div>
+              )}
             </div>
           </div>
 
@@ -293,7 +319,10 @@ function DisponibilidadPanel({ receta }) {
           <div className="kv">
             {preview.map((it) => (
               <div className="kv-row" key={it.id_articulo}>
-                <div className="kv-k">{it.nombre}</div>
+                <div className="kv-k">
+                  {it.nombre}
+                  {it.medida ? ` ${it.medida}` : ''}
+                </div>
                 <div className="kv-v" style={it.insuficiente ? { color: 'var(--danger, #c0392b)' } : undefined}>
                   necesita {formatNumber(it.necesario)} {it.unidad_medida} · disponible {formatNumber(asNumber(it.stock_actual, 0))}
                 </div>

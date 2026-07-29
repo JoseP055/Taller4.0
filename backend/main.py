@@ -320,6 +320,12 @@ class FabricacionPayload(BaseModel):
   referencia: str | None = Field(default=None, max_length=100)
   observaciones: str | None = Field(default=None, max_length=255)
 
+class CreacionSubensamblePayload(BaseModel):
+  id_articulo: int = Field(..., ge=1)
+  cantidad: float = Field(..., gt=0)
+  referencia: str | None = Field(default=None, max_length=100)
+  observaciones: str | None = Field(default=None, max_length=255)
+
 class AsociacionPayload(BaseModel):
   id_subensamble: int = Field(..., ge=1)
   id_producto_terminado: int = Field(..., ge=1)
@@ -459,6 +465,23 @@ def crear_fabricacion(payload: FabricacionPayload, authorization: str | None = H
   _cache_invalidate_prefix('summary:productos-terminados')
   return res
 
+@app.post('/logistica/creacion-subensamble')
+def crear_stock_subensamble(payload: CreacionSubensamblePayload, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  res = _supabase_rpc(
+    'inv_add_stock_subensamble',
+    {
+      'id_articulo': payload.id_articulo,
+      'cantidad': payload.cantidad,
+      'referencia': payload.referencia or 'CREACION_SUBENSAMBLE',
+      'observaciones': payload.observaciones,
+      'id_usuario': None,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('summary:subensambles')
+  return res
+
 @app.get('/logistica/recetas')
 def listar_recetas(id_producto_terminado: int | None = Query(default=None, ge=1), authorization: str | None = Header(default=None)):
   _require_app_access(authorization)
@@ -579,6 +602,13 @@ class HerramientaDevolverPayload(BaseModel):
   observaciones: str | None = Field(default=None, max_length=255)
 
 
+class HerramientaUpdatePayload(BaseModel):
+  nombre_base: str | None = Field(default=None, min_length=1, max_length=150)
+  descripcion: str | None = Field(default=None, max_length=255)
+  id_ubicacion: int | None = Field(default=None, ge=1)
+  observaciones: str | None = Field(default=None, max_length=255)
+
+
 @app.get('/herramientas/meta')
 def herramientas_meta(authorization: str | None = Header(default=None)):
   ctx = _require_app_access(authorization)
@@ -680,6 +710,25 @@ def devolver_herramienta(id_herramienta: int, payload: HerramientaDevolverPayloa
     {'id_herramienta': id_herramienta, 'observaciones': payload.observaciones},
     authorization=authorization,
   )
+
+
+@app.patch('/herramientas/{id_herramienta}')
+def editar_herramienta(id_herramienta: int, payload: HerramientaUpdatePayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  res = _supabase_rpc(
+    'herr_update_unidad',
+    {
+      'id_herramienta': id_herramienta,
+      'nombre_base': payload.nombre_base,
+      'descripcion': payload.descripcion,
+      'id_ubicacion': payload.id_ubicacion,
+      'observaciones': payload.observaciones,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('herr:meta')
+  return res
 
 
 class ColaboradorCreatePayload(BaseModel):

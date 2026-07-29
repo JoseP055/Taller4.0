@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../auth/AuthContext.jsx'
+import ItemPicker from '../components/ItemPicker.jsx'
 
 const API_BASE = (() => {
   const env = String(import.meta.env.VITE_API_URL || '').trim()
@@ -180,120 +181,6 @@ function SuccessModal({ open, title, children, onAccept }) {
   )
 }
 
-function ItemPicker({
-  items,
-  selectedId,
-  onPick,
-  disabled,
-  emptyText,
-  pageSize = 5,
-  resetKey = '',
-}) {
-  const rows = Array.isArray(items) ? items : []
-  const size = Math.max(Number(pageSize) || 5, 1)
-  const total = rows.length
-  const totalPages = Math.max(Math.ceil(total / size), 1)
-  const [page, setPage] = useState(0)
-
-  useEffect(() => {
-    setPage(0)
-  }, [resetKey])
-
-  useEffect(() => {
-    if (page > totalPages - 1) setPage(Math.max(totalPages - 1, 0))
-  }, [page, totalPages])
-
-  const start = page * size
-  const pageRows = rows.slice(start, start + size)
-
-  return (
-    <div
-      style={{
-        border: '1px solid var(--border)',
-        borderRadius: 10,
-        overflow: 'hidden',
-        background: 'var(--panel)',
-      }}
-    >
-      <div>
-        {pageRows.length ? (
-          pageRows.map((x) => {
-            const isSelected = String(selectedId || '') === String(x.id)
-            return (
-              <div
-                key={x.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  padding: '10px 10px',
-                  borderBottom: '1px solid var(--border)',
-                }}
-              >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div className="mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {x.codigo} — {x.nombre}
-                  </div>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {x.subcategoria}
-                    {x.medida ? ` • ${x.medida}` : ''}
-                    {x.ubicacion ? ` • ${x.ubicacion}` : ''}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className={isSelected ? 'primary' : 'btn'}
-                  onClick={() => onPick(String(x.id))}
-                  disabled={disabled}
-                >
-                  {isSelected ? 'Seleccionado' : 'Elegir'}
-                </button>
-              </div>
-            )
-          })
-        ) : (
-          <div className="muted" style={{ padding: 12, fontSize: 13 }}>
-            {emptyText || 'No hay resultados.'}
-          </div>
-        )}
-      </div>
-      {rows.length > size ? (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-            padding: 10,
-            borderTop: '1px solid var(--border)',
-          }}
-        >
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setPage((p) => Math.max(p - 1, 0))}
-            disabled={disabled || page <= 0}
-          >
-            Anterior
-          </button>
-          <div className="muted" style={{ fontSize: 12 }}>
-            Página {page + 1} de {totalPages}
-          </div>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))}
-            disabled={disabled || page >= totalPages - 1}
-          >
-            Siguiente
-          </button>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 export default function Movimientos() {
   const { role } = useAuth()
   const isZebra = role === 'zebra'
@@ -305,7 +192,6 @@ export default function Movimientos() {
   const [modo, setModo] = useState('SALIDA_PROYECTO')
   const [search, setSearch] = useState('')
   const [idPt, setIdPt] = useState('')
-  const [scanCodigo, setScanCodigo] = useState('')
   const [cantidad, setCantidad] = useState('')
   const [referencia, setReferencia] = useState('PROYECTO')
   const [observaciones, setObservaciones] = useState('')
@@ -379,13 +265,14 @@ export default function Movimientos() {
   function pickByCodigo(raw) {
     const code = String(raw || '').trim()
     if (!code) return
-    const found = filtered.find((x) => String(x.codigo) === code) || null
+    const found = items.find((x) => String(x.codigo) === code) || null
     if (!found) {
       setError(`No se encontró producto terminado con código ${code}.`)
       return
     }
     setError('')
     setIdPt(String(found.id))
+    setSearch('')
   }
 
   const qty = useMemo(() => {
@@ -524,7 +411,6 @@ export default function Movimientos() {
             setResult(null)
             setSearch('')
             setIdPt('')
-            setScanCodigo('')
             setCantidad('')
             setObservaciones('')
           }}
@@ -576,47 +462,22 @@ export default function Movimientos() {
 
             <label className="field">
               <span>Producto terminado</span>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                <input
-                  value={scanCodigo}
-                  onChange={(e) => setScanCodigo(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return
-                    e.preventDefault()
-                    const v = String(scanCodigo || '').trim()
-                    if (!v) return
-                    pickByCodigo(v)
-                    setScanCodigo('')
-                  }}
-                  placeholder={
-                    isZebra
-                      ? 'Escanear QR (código) del producto terminado'
-                      : 'Escanear/pegar código del producto terminado'
-                  }
-                  inputMode="numeric"
-                  disabled={isLoading}
-                  autoFocus={isZebra}
-                  style={{ flex: 1 }}
-                />
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    pickByCodigo(scanCodigo)
-                    setScanCodigo('')
-                  }}
-                  disabled={isLoading || !String(scanCodigo || '').trim()}
-                >
-                  Buscar
-                </button>
-              </div>
-
               <div style={{ display: 'flex', gap: 10 }}>
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar por código, nombre, subcategoría..."
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    pickByCodigo(search)
+                  }}
+                  placeholder={
+                    isZebra
+                      ? 'Escanear QR o buscar por nombre...'
+                      : 'Escanear código o buscar por código, nombre, subcategoría...'
+                  }
                   disabled={isLoading}
+                  autoFocus={isZebra}
                   style={{ flex: 1 }}
                 />
                 <button
@@ -626,7 +487,7 @@ export default function Movimientos() {
                     setIdPt('')
                     setSearch('')
                   }}
-                  disabled={isLoading || !idPt}
+                  disabled={isLoading || (!idPt && !search)}
                 >
                   Limpiar
                 </button>

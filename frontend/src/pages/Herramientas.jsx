@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import QRCode from 'qrcode'
 import FilterableTable from '../components/FilterableTable.jsx'
 
 const API_BASE = (() => {
@@ -211,20 +212,20 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
   const tipos = meta?.tipos || []
   const ubis = meta?.ubicaciones || []
   const [idArticulo, setIdArticulo] = useState(tipos[0]?.id ?? '')
-  const [codigo, setCodigo] = useState('')
   const [idUbicacion, setIdUbicacion] = useState(() => ubis.find((u) => u.codigo === 'HERRAMIENTAS')?.id ?? ubis[0]?.id ?? '')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const selectedTipo = useMemo(
+    () => tipos.find((t) => String(t.id) === String(idArticulo)) || null,
+    [tipos, idArticulo],
+  )
+
   async function submit(e) {
     e.preventDefault()
     setError('')
-    if (!idArticulo) {
+    if (!idArticulo || !selectedTipo) {
       setError('Selecciona un tipo de herramienta.')
-      return
-    }
-    if (!codigo.trim()) {
-      setError('El código de la herramienta es obligatorio.')
       return
     }
     setIsSubmitting(true)
@@ -233,7 +234,7 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
         method: 'POST',
         body: {
           id_articulo: Number(idArticulo),
-          codigo_herramienta: codigo.trim().toUpperCase(),
+          codigo_herramienta: String(selectedTipo.codigo),
           id_ubicacion: idUbicacion ? Number(idUbicacion) : null,
         },
       })
@@ -288,7 +289,7 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
             </label>
             <label className="field">
               <span>Código de la unidad</span>
-              <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="HR-001" required />
+              <input value={selectedTipo ? String(selectedTipo.codigo) : ''} disabled />
             </label>
             <label className="field">
               <span>Ubicación</span>
@@ -378,6 +379,136 @@ function AsignarModal({ meta, herramienta, onClose, onSaved }) {
   )
 }
 
+function EditarHerramientaModal({ meta, herramienta, onClose, onSaved }) {
+  const ubis = meta?.ubicaciones || []
+  const [nombre, setNombre] = useState(herramienta?.nombre || '')
+  const [descripcion, setDescripcion] = useState('')
+  const [idUbicacion, setIdUbicacion] = useState(
+    () => ubis.find((u) => u.codigo === herramienta?.ubicacion)?.id ?? ubis[0]?.id ?? '',
+  )
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function submit(e) {
+    e.preventDefault()
+    setError('')
+    if (!nombre.trim()) {
+      setError('El nombre es obligatorio.')
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await fetchApi(`/herramientas/${herramienta.id}`, {
+        method: 'PATCH',
+        body: {
+          nombre_base: nombre.trim().toUpperCase(),
+          descripcion: descripcion.trim() ? descripcion.trim().toUpperCase() : null,
+          id_ubicacion: idUbicacion ? Number(idUbicacion) : null,
+        },
+      })
+      onSaved()
+    } catch (e2) {
+      setError(e2?.message || 'No se pudo guardar')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal">
+        <div className="modal-head">
+          <div className="modal-title">Editar {herramienta.codigo}</div>
+          <button type="button" className="btn" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+        <form className="modal-body" onSubmit={submit}>
+          <div className="form-grid">
+            <label className="field">
+              <span>Código</span>
+              <input value={herramienta.codigo} disabled />
+            </label>
+            <label className="field">
+              <span>Nombre</span>
+              <input value={nombre} onChange={(e) => setNombre(e.target.value.toUpperCase())} required />
+            </label>
+            <label className="field">
+              <span>Ubicación</span>
+              <select value={idUbicacion} onChange={(e) => setIdUbicacion(e.target.value)}>
+                {ubis.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.codigo} — {u.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Descripción (opcional)</span>
+              <input
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value.toUpperCase())}
+                placeholder="Descripción general..."
+              />
+            </label>
+          </div>
+          {error ? <div className="form-error">{error}</div> : null}
+          <div className="modal-actions">
+            <button className="primary" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function QrModal({ codigo, onClose }) {
+  const [dataUrl, setDataUrl] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    QRCode.toDataURL(String(codigo), { width: 220, margin: 1 })
+      .then((url) => {
+        if (!active) return
+        setDataUrl(url)
+      })
+      .catch((e) => {
+        if (!active) return
+        setError(e?.message || 'No se pudo generar el QR')
+      })
+    return () => {
+      active = false
+    }
+  }, [codigo])
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal" style={{ maxWidth: 520 }}>
+        <div className="modal-head">
+          <div className="modal-title">Código QR</div>
+          <button type="button" className="btn" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+        <div className="modal-body">
+          <div className="qr-wrap">
+            {dataUrl ? (
+              <img className="qr-code" src={dataUrl} alt={`QR ${codigo}`} />
+            ) : (
+              <div className="muted">Generando...</div>
+            )}
+            <div className="mono">{String(codigo)}</div>
+          </div>
+          {error ? <div className="form-error">{error}</div> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Herramientas() {
   const [items, setItems] = useState([])
   const [meta, setMeta] = useState(null)
@@ -391,6 +522,8 @@ export default function Herramientas() {
   const [tipoModalOpen, setTipoModalOpen] = useState(false)
   const [unidadModalOpen, setUnidadModalOpen] = useState(false)
   const [asignarTarget, setAsignarTarget] = useState(null)
+  const [editTarget, setEditTarget] = useState(null)
+  const [qrTarget, setQrTarget] = useState(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -461,16 +594,25 @@ export default function Herramientas() {
         key: 'accion',
         label: 'Acción',
         filterable: false,
-        render: (x) =>
-          x.estado === 'DISPONIBLE' ? (
-            <button type="button" className="btn icon" onClick={() => setAsignarTarget(x)}>
-              Asignar
+        render: (x) => (
+          <div className="actions inline">
+            <button type="button" className="btn icon" onClick={() => setEditTarget(x)}>
+              Editar
             </button>
-          ) : x.estado === 'ASIGNADA' ? (
-            <button type="button" className="btn icon" onClick={() => onDevolver(x)}>
-              Devolver
+            <button type="button" className="btn icon qr" onClick={() => setQrTarget(x)}>
+              QR
             </button>
-          ) : null,
+            {x.estado === 'DISPONIBLE' ? (
+              <button type="button" className="btn icon" onClick={() => setAsignarTarget(x)}>
+                Asignar
+              </button>
+            ) : x.estado === 'ASIGNADA' ? (
+              <button type="button" className="btn icon" onClick={() => onDevolver(x)}>
+                Devolver
+              </button>
+            ) : null}
+          </div>
+        ),
       },
     ],
     [],
@@ -564,6 +706,22 @@ export default function Herramientas() {
             setRefreshKey((k) => k + 1)
           }}
         />
+      ) : null}
+
+      {editTarget ? (
+        <EditarHerramientaModal
+          meta={meta}
+          herramienta={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            setEditTarget(null)
+            setRefreshKey((k) => k + 1)
+          }}
+        />
+      ) : null}
+
+      {qrTarget ? (
+        <QrModal key={String(qrTarget.codigo)} codigo={qrTarget.codigo} onClose={() => setQrTarget(null)} />
       ) : null}
     </section>
   )
