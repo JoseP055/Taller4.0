@@ -409,7 +409,11 @@ export default function Recetas() {
 
   const columns = useMemo(
     () => [
-      { key: 'producto_terminado', label: 'Producto terminado' },
+      {
+        key: 'producto_terminado',
+        label: 'Producto terminado',
+        render: (r) => (r.pt_medida ? `${r.producto_terminado} (${r.pt_medida})` : r.producto_terminado),
+      },
       { key: 'nombre', label: 'Receta' },
       {
         key: 'insumos',
