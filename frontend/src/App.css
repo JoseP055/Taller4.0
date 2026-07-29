@@ -1666,15 +1666,20 @@ img {
 .modal {
   width: 100%;
   max-width: 760px;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: var(--shadow);
   animation: modal-in 180ms ease-out both;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-head {
+  flex: 0 0 auto;
   padding: 14px 14px;
   display: flex;
   justify-content: space-between;
@@ -1688,6 +1693,10 @@ img {
 }
 
 .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 14px;
   display: flex;
   flex-direction: column;
