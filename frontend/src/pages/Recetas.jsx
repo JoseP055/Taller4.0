@@ -101,6 +101,18 @@ function sortByNombre(a, b) {
   return `${a.nombre}`.localeCompare(`${b.nombre}`)
 }
 
+const TIPO_LABELS = { 'Materia prima': 'Materias primas', Subensamble: 'Subensambles' }
+
+function groupByTipo(items) {
+  const groups = new Map()
+  for (const it of items) {
+    const key = it.tipo || 'Otro'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(it)
+  }
+  return Array.from(groups.entries()).map(([tipo, rows]) => ({ tipo, label: TIPO_LABELS[tipo] || tipo, rows }))
+}
+
 function RecetaFormModal({ ptOptions, materiasPrimas, subensambles, initial, onClose, onSaved }) {
   const [ptId, setPtId] = useState(initial ? String(initial.id_producto_terminado) : '')
   const [nombre, setNombre] = useState(initial?.nombre || '')
@@ -316,15 +328,22 @@ function DisponibilidadPanel({ receta }) {
           <div className={puedeFabricar ? 'badge success' : 'badge'} style={{ marginTop: 10, marginBottom: 10 }}>
             {puedeFabricar ? '✅ Se puede fabricar' : '⚠ Faltan insumos'}
           </div>
-          <div className="kv">
-            {preview.map((it) => (
-              <div className="kv-row" key={it.id_articulo}>
-                <div className="kv-k">
-                  {it.nombre}
-                  {it.medida ? ` ${it.medida}` : ''}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {groupByTipo(preview).map((group) => (
+              <div key={group.tipo}>
+                <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                  {group.label}
                 </div>
-                <div className="kv-v" style={it.insuficiente ? { color: 'var(--danger, #c0392b)' } : undefined}>
-                  necesita {formatNumber(it.necesario)} {it.unidad_medida} · disponible {formatNumber(asNumber(it.stock_actual, 0))}
+                <div className="kv">
+                  {group.rows.map((it) => (
+                    <div className="kv-row" key={it.id_articulo}>
+                      <div className="kv-k">{formatInsumoLabel(it)}</div>
+                      <div className="kv-v" style={it.insuficiente ? { color: 'var(--danger, #c0392b)' } : undefined}>
+                        necesita {formatNumber(it.necesario)} {it.unidad_medida} · disponible{' '}
+                        {formatNumber(asNumber(it.stock_actual, 0))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}

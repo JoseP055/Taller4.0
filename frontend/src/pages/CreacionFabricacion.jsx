@@ -149,6 +149,24 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback
 }
 
+function formatInsumoLabel(it) {
+  const codigo = it.codigo ? `${it.codigo} — ` : ''
+  const medida = it.medida ? ` (${it.medida})` : ''
+  return `${codigo}${it.nombre}${medida}`
+}
+
+const TIPO_LABELS = { 'Materia prima': 'Materias primas', Subensamble: 'Subensambles' }
+
+function groupByTipo(items) {
+  const groups = new Map()
+  for (const it of items) {
+    const key = it.tipo || 'Otro'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(it)
+  }
+  return Array.from(groups.entries()).map(([tipo, rows]) => ({ tipo, label: TIPO_LABELS[tipo] || tipo, rows }))
+}
+
 function normalizeItems(data) {
   const rows = Array.isArray(data?.items) ? data.items : []
   return rows.map((x) => ({
@@ -557,16 +575,25 @@ export default function CreacionFabricacion() {
             </label>
 
             {recetaPreview.length > 0 ? (
-              <div className="kv" style={{ gridColumn: '1 / -1' }}>
-                {recetaPreview.map((it) => (
-                  <div className="kv-row" key={it.id_articulo}>
-                    <div className="kv-k">{it.nombre}</div>
-                    <div
-                      className="kv-v"
-                      style={it.insuficiente ? { color: 'var(--danger, #c0392b)' } : undefined}
-                    >
-                      necesita {formatNumber(asNumber(it.necesario, 0))} {it.unidad_medida} · disponible{' '}
-                      {formatNumber(asNumber(it.stock_actual, 0))}
+              <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {groupByTipo(recetaPreview).map((group) => (
+                  <div key={group.tipo}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                      {group.label}
+                    </div>
+                    <div className="kv">
+                      {group.rows.map((it) => (
+                        <div className="kv-row" key={it.id_articulo}>
+                          <div className="kv-k">{formatInsumoLabel(it)}</div>
+                          <div
+                            className="kv-v"
+                            style={it.insuficiente ? { color: 'var(--danger, #c0392b)' } : undefined}
+                          >
+                            necesita {formatNumber(asNumber(it.necesario, 0))} {it.unidad_medida} · disponible{' '}
+                            {formatNumber(asNumber(it.stock_actual, 0))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
