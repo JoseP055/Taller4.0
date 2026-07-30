@@ -809,6 +809,7 @@ export default function Herramientas() {
             rows={items}
             isLoading={isLoadingItems}
             emptyMessage="No hay herramientas registradas."
+            pageSize={15}
           />
         </div>
       ) : vista === 'colaboradores' ? (

@@ -169,10 +169,12 @@ export default function FilterableTable({
   emptyMessage = 'No hay resultados.',
   loadingMessage = 'Cargando...',
   rowKey = (row) => row.id,
+  pageSize = null,
 }) {
   const [filters, setFilters] = useState({})
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [openState, setOpenState] = useState(null)
+  const [page, setPage] = useState(0)
 
   const uniqueValuesByKey = useMemo(() => {
     const map = {}
@@ -215,6 +217,19 @@ export default function FilterableTable({
     }
     return result
   }, [rows, columns, filters, sort])
+
+  const size = pageSize ? Math.max(Number(pageSize) || 1, 1) : null
+  const totalPages = size ? Math.max(Math.ceil(filteredRows.length / size), 1) : 1
+
+  useEffect(() => {
+    setPage(0)
+  }, [filters, sort, size])
+
+  useEffect(() => {
+    if (page > totalPages - 1) setPage(Math.max(totalPages - 1, 0))
+  }, [page, totalPages])
+
+  const pagedRows = size ? filteredRows.slice(page * size, page * size + size) : filteredRows
 
   function updateFilter(key, next) {
     setFilters((prev) => ({ ...prev, [key]: next }))
@@ -285,8 +300,8 @@ export default function FilterableTable({
                   {loadingMessage}
                 </td>
               </tr>
-            ) : filteredRows.length ? (
-              filteredRows.map((row) => (
+            ) : pagedRows.length ? (
+              pagedRows.map((row) => (
                 <tr key={rowKey(row)}>
                   {columns.map((col) => (
                     <td key={col.key} className={col.className} style={col.align ? { textAlign: col.align } : undefined}>
@@ -305,6 +320,24 @@ export default function FilterableTable({
           </tbody>
         </table>
       </div>
+      {size && filteredRows.length > size ? (
+        <div className="table-pagination">
+          <button type="button" className="btn" onClick={() => setPage((p) => Math.max(p - 1, 0))} disabled={page <= 0}>
+            Anterior
+          </button>
+          <div className="muted" style={{ fontSize: 12 }}>
+            Página {page + 1} de {totalPages} ({filteredRows.length} resultados)
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))}
+            disabled={page >= totalPages - 1}
+          >
+            Siguiente
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
