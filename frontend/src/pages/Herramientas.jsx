@@ -514,7 +514,7 @@ export default function Herramientas() {
   const [meta, setMeta] = useState(null)
   const [isLoadingMeta, setIsLoadingMeta] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
-  const [filter, setFilter] = useState('Todas')
+  const [vista, setVista] = useState('taller')
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
@@ -546,7 +546,6 @@ export default function Herramientas() {
       setError('')
       const qs = new URLSearchParams()
       if (search.trim()) qs.set('search', search.trim())
-      if (filter !== 'Todas') qs.set('estatus', filter)
       qs.set('limit', '200')
       fetchJson(`/herramientas/items?${qs.toString()}`, { signal: controller.signal })
         .then((data) => setItems(Array.isArray(data?.items) ? data.items : []))
@@ -563,7 +562,7 @@ export default function Herramientas() {
       controller.abort()
       clearTimeout(handle)
     }
-  }, [filter, search, refreshKey])
+  }, [search, refreshKey])
 
   const kpis = useMemo(() => {
     const total = items.length
@@ -582,41 +581,70 @@ export default function Herramientas() {
     }
   }
 
-  const columns = useMemo(
+  const accionColumn = useMemo(
+    () => ({
+      key: 'accion',
+      label: 'Acción',
+      filterable: false,
+      render: (x) => (
+        <div className="actions inline">
+          <button type="button" className="btn icon" onClick={() => setEditTarget(x)}>
+            Editar
+          </button>
+          <button type="button" className="btn icon qr" onClick={() => setQrTarget(x)}>
+            QR
+          </button>
+          {x.estado === 'DISPONIBLE' ? (
+            <button type="button" className="btn icon" onClick={() => setAsignarTarget(x)}>
+              Asignar
+            </button>
+          ) : x.estado === 'ASIGNADA' ? (
+            <button type="button" className="btn icon" onClick={() => onDevolver(x)}>
+              Devolver
+            </button>
+          ) : null}
+        </div>
+      ),
+    }),
+    [],
+  )
+
+  const tallerColumns = useMemo(
     () => [
       { key: 'codigo', label: 'Código', render: (x) => <span className="mono">{x.codigo}</span> },
       { key: 'nombre', label: 'Nombre' },
       { key: 'tipo', label: 'Tipo' },
       { key: 'estado', label: 'Estado', type: 'enum', render: (x) => <span className="pill">{x.estado}</span> },
       { key: 'ubicacion', label: 'Ubicación' },
-      { key: 'asignado_a', label: 'Asignado a', value: (x) => x.asignado_a || '-' },
-      {
-        key: 'accion',
-        label: 'Acción',
-        filterable: false,
-        render: (x) => (
-          <div className="actions inline">
-            <button type="button" className="btn icon" onClick={() => setEditTarget(x)}>
-              Editar
-            </button>
-            <button type="button" className="btn icon qr" onClick={() => setQrTarget(x)}>
-              QR
-            </button>
-            {x.estado === 'DISPONIBLE' ? (
-              <button type="button" className="btn icon" onClick={() => setAsignarTarget(x)}>
-                Asignar
-              </button>
-            ) : x.estado === 'ASIGNADA' ? (
-              <button type="button" className="btn icon" onClick={() => onDevolver(x)}>
-                Devolver
-              </button>
-            ) : null}
-          </div>
-        ),
-      },
+      accionColumn,
     ],
-    [],
+    [accionColumn],
   )
+
+  const colaboradorColumns = useMemo(
+    () => [
+      { key: 'codigo', label: 'Código', render: (x) => <span className="mono">{x.codigo}</span> },
+      { key: 'nombre', label: 'Nombre' },
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'ubicacion', label: 'Ubicación' },
+      accionColumn,
+    ],
+    [accionColumn],
+  )
+
+  const tallerItems = useMemo(() => items.filter((x) => x.estado !== 'ASIGNADA'), [items])
+
+  const colaboradorGroups = useMemo(() => {
+    const map = new Map()
+    for (const x of items) {
+      if (x.estado !== 'ASIGNADA' || !x.asignado_a) continue
+      if (!map.has(x.asignado_a)) map.set(x.asignado_a, [])
+      map.get(x.asignado_a).push(x)
+    }
+    return Array.from(map.entries())
+      .map(([nombre, herramientas]) => ({ nombre, herramientas }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [items])
 
   return (
     <section className="inv-page">
@@ -635,44 +663,90 @@ export default function Herramientas() {
         <StatCard label="Asignadas" value={isLoadingItems ? '-' : kpis.asignadas} />
       </div>
 
-      <div className="card">
-        <div className="table-top">
-          <div className="table-filters">
-            <div className="segmented" role="tablist" aria-label="Filtro de estado">
-              <button type="button" className={filter === 'Todas' ? 'seg active' : 'seg'} onClick={() => setFilter('Todas')}>
-                Todas
+      <div className="segmented" role="tablist" aria-label="Vista">
+        <button type="button" className={vista === 'taller' ? 'seg active' : 'seg'} onClick={() => setVista('taller')}>
+          Taller general
+        </button>
+        <button
+          type="button"
+          className={vista === 'colaboradores' ? 'seg active' : 'seg'}
+          onClick={() => setVista('colaboradores')}
+        >
+          Colaboradores
+        </button>
+      </div>
+
+      {vista === 'taller' ? (
+        <div className="card">
+          <div className="table-top">
+            <div className="table-filters">
+              <input
+                className="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar código o nombre..."
+              />
+            </div>
+            <div className="actions">
+              <button className="btn" type="button" onClick={() => setTipoModalOpen(true)} disabled={isLoadingMeta}>
+                Nuevo tipo
               </button>
-              <button type="button" className={filter === 'DISPONIBLE' ? 'seg active' : 'seg'} onClick={() => setFilter('DISPONIBLE')}>
-                Disponibles
-              </button>
-              <button type="button" className={filter === 'ASIGNADA' ? 'seg active' : 'seg'} onClick={() => setFilter('ASIGNADA')}>
-                Asignadas
+              <button className="primary" type="button" onClick={() => setUnidadModalOpen(true)} disabled={isLoadingMeta}>
+                Agregar unidad
               </button>
             </div>
-            <input
-              className="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar código o nombre..."
-            />
           </div>
-          <div className="actions">
-            <button className="btn" type="button" onClick={() => setTipoModalOpen(true)} disabled={isLoadingMeta}>
-              Nuevo tipo
-            </button>
-            <button className="primary" type="button" onClick={() => setUnidadModalOpen(true)} disabled={isLoadingMeta}>
-              Agregar unidad
-            </button>
-          </div>
-        </div>
 
-        <FilterableTable
-          columns={columns}
-          rows={items}
-          isLoading={isLoadingItems}
-          emptyMessage="No hay herramientas registradas."
-        />
-      </div>
+          <FilterableTable
+            columns={tallerColumns}
+            rows={tallerItems}
+            isLoading={isLoadingItems}
+            emptyMessage="No hay herramientas disponibles en el taller general."
+          />
+        </div>
+      ) : (
+        <div className="card">
+          <div className="table-top">
+            <div className="table-filters">
+              <input
+                className="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por colaborador, código o nombre..."
+              />
+            </div>
+          </div>
+
+          {isLoadingItems ? (
+            <div className="muted" style={{ padding: 12 }}>
+              Cargando...
+            </div>
+          ) : colaboradorGroups.length ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {colaboradorGroups.map((group) => (
+                <div key={group.nombre}>
+                  <div className="card-title" style={{ marginBottom: 6 }}>
+                    {group.nombre}
+                    <span className="muted" style={{ fontWeight: 400, marginLeft: 6 }}>
+                      ({group.herramientas.length} herramienta{group.herramientas.length === 1 ? '' : 's'})
+                    </span>
+                  </div>
+                  <FilterableTable
+                    columns={colaboradorColumns}
+                    rows={group.herramientas}
+                    isLoading={false}
+                    emptyMessage="Sin herramientas."
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="muted" style={{ padding: 12 }}>
+              No hay herramientas asignadas a colaboradores.
+            </div>
+          )}
+        </div>
+      )}
 
       {tipoModalOpen ? (
         <NuevoTipoModal
