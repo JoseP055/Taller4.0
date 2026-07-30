@@ -601,6 +601,7 @@ class HerramientaAsignarPayload(BaseModel):
 
 
 class HerramientaDevolverPayload(BaseModel):
+  cantidad: float | None = Field(default=None, gt=0)
   observaciones: str | None = Field(default=None, max_length=255)
 
 
@@ -719,7 +720,7 @@ def devolver_herramienta(id_asignacion: int, payload: HerramientaDevolverPayload
   _require_not_zebra(ctx)
   return _supabase_rpc(
     'herr_devolver',
-    {'id_asignacion': id_asignacion, 'observaciones': payload.observaciones},
+    {'id_asignacion': id_asignacion, 'cantidad': payload.cantidad, 'observaciones': payload.observaciones},
     authorization=authorization,
   )
 

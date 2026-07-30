@@ -528,6 +528,78 @@ function EditarHerramientaModal({ meta, herramienta, onClose, onSaved }) {
   )
 }
 
+function DevolverModal({ asignacion, onClose, onSaved }) {
+  const maxCantidad = Number(asignacion?.cantidad ?? 1)
+  const [cantidad, setCantidad] = useState(String(maxCantidad))
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function submit(e) {
+    e.preventDefault()
+    setError('')
+    const cant = Number(cantidad)
+    if (!Number.isFinite(cant) || cant <= 0) {
+      setError('Ingresa una cantidad válida.')
+      return
+    }
+    if (cant > maxCantidad) {
+      setError(`No podés devolver más de ${maxCantidad}.`)
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      await fetchApi(`/herramientas/asignaciones/${asignacion.id_asignacion}/devolver`, {
+        method: 'POST',
+        body: { cantidad: cant },
+      })
+      onSaved()
+    } catch (e2) {
+      setError(e2?.message || 'No se pudo devolver la herramienta')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal">
+        <div className="modal-head">
+          <div className="modal-title">
+            Devolver {asignacion.codigo} — {asignacion.nombre}
+          </div>
+          <button type="button" className="btn" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+        <form className="modal-body" onSubmit={submit}>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {asignacion.colaborador} tiene {maxCantidad} asignada(s).
+          </div>
+          <div className="form-grid">
+            <label className="field">
+              <span>Cantidad a devolver</span>
+              <input
+                type="number"
+                min="1"
+                max={maxCantidad}
+                step="1"
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+              />
+            </label>
+          </div>
+          {error ? <div className="form-error">{error}</div> : null}
+          <div className="modal-actions">
+            <button className="primary" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Devolviendo...' : 'Devolver'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function QrModal({ codigo, onClose }) {
   const [dataUrl, setDataUrl] = useState('')
   const [error, setError] = useState('')
@@ -589,6 +661,7 @@ export default function Herramientas() {
   const [asignarTarget, setAsignarTarget] = useState(null)
   const [editTarget, setEditTarget] = useState(null)
   const [qrTarget, setQrTarget] = useState(null)
+  const [devolverTarget, setDevolverTarget] = useState(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -642,16 +715,6 @@ export default function Herramientas() {
     const asignadas = items.reduce((sum, x) => sum + Number(x.cantidad_asignada ?? 0), 0)
     return { tipos, disponibles, asignadas }
   }, [items])
-
-  async function onDevolver(asignacion) {
-    setError('')
-    try {
-      await fetchApi(`/herramientas/asignaciones/${asignacion.id_asignacion}/devolver`, { method: 'POST', body: {} })
-      setRefreshKey((k) => k + 1)
-    } catch (e) {
-      setError(e?.message || 'No se pudo devolver la herramienta')
-    }
-  }
 
   const tallerColumns = useMemo(
     () => [
@@ -714,7 +777,7 @@ export default function Herramientas() {
         label: 'Acción',
         filterable: false,
         render: (x) => (
-          <button type="button" className="btn icon" onClick={() => onDevolver(x)}>
+          <button type="button" className="btn icon" onClick={() => setDevolverTarget(x)}>
             Devolver
           </button>
         ),
@@ -885,6 +948,17 @@ export default function Herramientas() {
 
       {qrTarget ? (
         <QrModal key={String(qrTarget.codigo)} codigo={qrTarget.codigo} onClose={() => setQrTarget(null)} />
+      ) : null}
+
+      {devolverTarget ? (
+        <DevolverModal
+          asignacion={devolverTarget}
+          onClose={() => setDevolverTarget(null)}
+          onSaved={() => {
+            setDevolverTarget(null)
+            setRefreshKey((k) => k + 1)
+          }}
+        />
       ) : null}
     </section>
   )
