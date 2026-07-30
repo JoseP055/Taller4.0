@@ -698,6 +698,13 @@ def herramientas_asignaciones(search: str = Query('', max_length=100), authoriza
   return _supabase_rpc('herr_asignaciones_activas', {'search': search}, authorization=authorization)
 
 
+@app.get('/herramientas/movimientos')
+def herramientas_movimientos(limit: int = Query(50, ge=1, le=500), authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc('herr_movimientos', {'lim': limit}, authorization=authorization)
+
+
 @app.post('/herramientas/{id_herramienta}/asignar')
 def asignar_herramienta(id_herramienta: int, payload: HerramientaAsignarPayload, authorization: str | None = Header(default=None)):
   ctx = _require_app_access(authorization)

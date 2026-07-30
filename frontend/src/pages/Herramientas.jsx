@@ -648,6 +648,8 @@ function QrModal({ codigo, onClose }) {
 export default function Herramientas() {
   const [items, setItems] = useState([])
   const [asignaciones, setAsignaciones] = useState([])
+  const [movimientos, setMovimientos] = useState([])
+  const [isLoadingMovimientos, setIsLoadingMovimientos] = useState(true)
   const [meta, setMeta] = useState(null)
   const [isLoadingMeta, setIsLoadingMeta] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
@@ -709,11 +711,28 @@ export default function Herramientas() {
     }
   }, [search, refreshKey])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    setIsLoadingMovimientos(true)
+    fetchJson('/herramientas/movimientos?limit=50', { signal: controller.signal })
+      .then((data) => setMovimientos(Array.isArray(data) ? data : []))
+      .catch((e) => {
+        if (controller.signal.aborted) return
+        setMovimientos([])
+        setError(e?.message || 'No se pudo cargar el historial')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingMovimientos(false)
+      })
+    return () => controller.abort()
+  }, [refreshKey])
+
   const kpis = useMemo(() => {
     const tipos = items.length
+    const total = items.reduce((sum, x) => sum + Number(x.cantidad_total ?? 0), 0)
     const disponibles = items.reduce((sum, x) => sum + Number(x.cantidad_disponible ?? 0), 0)
     const asignadas = items.reduce((sum, x) => sum + Number(x.cantidad_asignada ?? 0), 0)
-    return { tipos, disponibles, asignadas }
+    return { tipos, total, disponibles, asignadas }
   }, [items])
 
   const tallerColumns = useMemo(
@@ -797,6 +816,27 @@ export default function Herramientas() {
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   }, [asignaciones])
 
+  const movimientoColumns = useMemo(
+    () => [
+      {
+        key: 'fecha',
+        label: 'Fecha',
+        value: (x) => (x.fecha ? new Date(x.fecha).toLocaleString('es-CR') : '-'),
+      },
+      {
+        key: 'tipo',
+        label: 'Tipo',
+        type: 'enum',
+        render: (x) => <span className="pill">{x.tipo === 'DEVOLUCION' ? 'Devolución' : 'Asignación'}</span>,
+      },
+      { key: 'codigo', label: 'Código', render: (x) => <span className="mono">{x.codigo}</span> },
+      { key: 'nombre', label: 'Nombre' },
+      { key: 'cantidad', label: 'Cantidad', type: 'number', align: 'right', className: 'num' },
+      { key: 'colaborador', label: 'Colaborador' },
+    ],
+    [],
+  )
+
   return (
     <section className="inv-page">
       <div className="inv-head">
@@ -810,6 +850,7 @@ export default function Herramientas() {
 
       <div className="stats">
         <StatCard label="Tipos registrados" value={isLoadingItems ? '-' : kpis.tipos} />
+        <StatCard label="Total de herramientas" value={isLoadingItems ? '-' : kpis.total} />
         <StatCard label="Unidades disponibles" value={isLoadingItems ? '-' : kpis.disponibles} />
         <StatCard label="Unidades asignadas" value={isLoadingItems ? '-' : kpis.asignadas} />
       </div>
@@ -824,6 +865,13 @@ export default function Herramientas() {
           onClick={() => setVista('colaboradores')}
         >
           Colaboradores
+        </button>
+        <button
+          type="button"
+          className={vista === 'movimientos' ? 'seg active' : 'seg'}
+          onClick={() => setVista('movimientos')}
+        >
+          Movimientos
         </button>
       </div>
 
@@ -855,7 +903,7 @@ export default function Herramientas() {
             emptyMessage="No hay herramientas registradas."
           />
         </div>
-      ) : (
+      ) : vista === 'colaboradores' ? (
         <div className="card">
           <div className="table-top">
             <div className="table-filters">
@@ -897,6 +945,20 @@ export default function Herramientas() {
               No hay herramientas asignadas a colaboradores.
             </div>
           )}
+        </div>
+      ) : (
+        <div className="card">
+          <div className="table-top">
+            <div className="card-title">Últimos movimientos</div>
+          </div>
+
+          <FilterableTable
+            columns={movimientoColumns}
+            rows={movimientos}
+            isLoading={isLoadingMovimientos}
+            emptyMessage="Aún no hay movimientos registrados."
+            rowKey={(x) => `${x.tipo}-${x.codigo}-${x.fecha}-${x.colaborador}`}
+          />
         </div>
       )}
 
