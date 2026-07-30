@@ -88,7 +88,7 @@ CREATE OR REPLACE FUNCTION herr_asignaciones_activas(search text DEFAULT '')
 RETURNS jsonb
 LANGUAGE sql
 AS $$
-  SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r->>'colaborador'), '[]'::jsonb)
+  SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.colaborador), '[]'::jsonb)
   FROM (
     SELECT
       ah.id_asignacion,
