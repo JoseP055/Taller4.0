@@ -213,6 +213,7 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
   const ubis = meta?.ubicaciones || []
   const [idArticulo, setIdArticulo] = useState(tipos[0]?.id ?? '')
   const [idUbicacion, setIdUbicacion] = useState(() => ubis.find((u) => u.codigo === 'HERRAMIENTAS')?.id ?? ubis[0]?.id ?? '')
+  const [cantidadTotal, setCantidadTotal] = useState('1')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -228,6 +229,11 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
       setError('Selecciona un tipo de herramienta.')
       return
     }
+    const cantidad = Number(cantidadTotal)
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      setError('La cantidad total debe ser mayor a 0.')
+      return
+    }
     setIsSubmitting(true)
     try {
       await fetchApi('/herramientas/unidades', {
@@ -236,6 +242,7 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
           id_articulo: Number(idArticulo),
           codigo_herramienta: String(selectedTipo.codigo),
           id_ubicacion: idUbicacion ? Number(idUbicacion) : null,
+          cantidad_total: cantidad,
         },
       })
       onSaved()
@@ -301,6 +308,16 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
                 ))}
               </select>
             </label>
+            <label className="field">
+              <span>Cantidad total</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={cantidadTotal}
+                onChange={(e) => setCantidadTotal(e.target.value)}
+              />
+            </label>
           </div>
           {error ? <div className="form-error">{error}</div> : null}
           <div className="modal-actions">
@@ -316,7 +333,9 @@ function NuevaUnidadModal({ meta, onClose, onSaved }) {
 
 function AsignarModal({ meta, herramienta, onClose, onSaved }) {
   const colaboradores = meta?.colaboradores || []
+  const disponible = Number(herramienta?.cantidad_disponible ?? 1)
   const [idColaborador, setIdColaborador] = useState(colaboradores[0]?.id ?? '')
+  const [cantidad, setCantidad] = useState('1')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -327,11 +346,20 @@ function AsignarModal({ meta, herramienta, onClose, onSaved }) {
       setError('Selecciona un colaborador.')
       return
     }
+    const cant = Number(cantidad)
+    if (!Number.isFinite(cant) || cant <= 0) {
+      setError('Ingresa una cantidad válida.')
+      return
+    }
+    if (cant > disponible) {
+      setError(`Solo hay ${disponible} unidad(es) disponible(s).`)
+      return
+    }
     setIsSubmitting(true)
     try {
       await fetchApi(`/herramientas/${herramienta.id}/asignar`, {
         method: 'POST',
-        body: { id_colaborador: Number(idColaborador) },
+        body: { id_colaborador: Number(idColaborador), cantidad: cant },
       })
       onSaved()
     } catch (e2) {
@@ -351,6 +379,9 @@ function AsignarModal({ meta, herramienta, onClose, onSaved }) {
           </button>
         </div>
         <form className="modal-body" onSubmit={submit}>
+          <div className="muted" style={{ fontSize: 12 }}>
+            Disponibles: {disponible}
+          </div>
           {colaboradores.length ? (
             <div className="form-grid">
               <label className="field">
@@ -363,13 +394,24 @@ function AsignarModal({ meta, herramienta, onClose, onSaved }) {
                   ))}
                 </select>
               </label>
+              <label className="field">
+                <span>Cantidad a asignar</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={disponible}
+                  step="1"
+                  value={cantidad}
+                  onChange={(e) => setCantidad(e.target.value)}
+                />
+              </label>
             </div>
           ) : (
             <div className="muted">No hay colaboradores activos. Crea uno en el módulo de Personal.</div>
           )}
           {error ? <div className="form-error">{error}</div> : null}
           <div className="modal-actions">
-            <button className="primary" type="submit" disabled={isSubmitting || !colaboradores.length}>
+            <button className="primary" type="submit" disabled={isSubmitting || !colaboradores.length || disponible <= 0}>
               {isSubmitting ? 'Asignando...' : 'Asignar'}
             </button>
           </div>
@@ -386,6 +428,7 @@ function EditarHerramientaModal({ meta, herramienta, onClose, onSaved }) {
   const [idUbicacion, setIdUbicacion] = useState(
     () => ubis.find((u) => u.codigo === herramienta?.ubicacion)?.id ?? ubis[0]?.id ?? '',
   )
+  const [cantidadTotal, setCantidadTotal] = useState(String(herramienta?.cantidad_total ?? 1))
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -396,6 +439,11 @@ function EditarHerramientaModal({ meta, herramienta, onClose, onSaved }) {
       setError('El nombre es obligatorio.')
       return
     }
+    const cantidad = Number(cantidadTotal)
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      setError('La cantidad total debe ser mayor a 0.')
+      return
+    }
     setIsSubmitting(true)
     try {
       await fetchApi(`/herramientas/${herramienta.id}`, {
@@ -404,6 +452,7 @@ function EditarHerramientaModal({ meta, herramienta, onClose, onSaved }) {
           nombre_base: nombre.trim().toUpperCase(),
           descripcion: descripcion.trim() ? descripcion.trim().toUpperCase() : null,
           id_ubicacion: idUbicacion ? Number(idUbicacion) : null,
+          cantidad_total: cantidad,
         },
       })
       onSaved()
@@ -442,6 +491,21 @@ function EditarHerramientaModal({ meta, herramienta, onClose, onSaved }) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="field">
+              <span>Cantidad total</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={cantidadTotal}
+                onChange={(e) => setCantidadTotal(e.target.value)}
+              />
+              {herramienta?.cantidad_asignada > 0 ? (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  Ya hay {herramienta.cantidad_asignada} asignada(s); no se puede bajar de eso.
+                </span>
+              ) : null}
             </label>
             <label className="field">
               <span>Descripción (opcional)</span>
@@ -511,6 +575,7 @@ function QrModal({ codigo, onClose }) {
 
 export default function Herramientas() {
   const [items, setItems] = useState([])
+  const [asignaciones, setAsignaciones] = useState([])
   const [meta, setMeta] = useState(null)
   const [isLoadingMeta, setIsLoadingMeta] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
@@ -547,11 +612,18 @@ export default function Herramientas() {
       const qs = new URLSearchParams()
       if (search.trim()) qs.set('search', search.trim())
       qs.set('limit', '200')
-      fetchJson(`/herramientas/items?${qs.toString()}`, { signal: controller.signal })
-        .then((data) => setItems(Array.isArray(data?.items) ? data.items : []))
+      Promise.all([
+        fetchJson(`/herramientas/items?${qs.toString()}`, { signal: controller.signal }),
+        fetchJson(`/herramientas/asignaciones?search=${encodeURIComponent(search.trim())}`, { signal: controller.signal }),
+      ])
+        .then(([itemsData, asignacionesData]) => {
+          setItems(Array.isArray(itemsData?.items) ? itemsData.items : [])
+          setAsignaciones(Array.isArray(asignacionesData) ? asignacionesData : [])
+        })
         .catch((e) => {
           if (controller.signal.aborted) return
           setItems([])
+          setAsignaciones([])
           setError(e?.message || 'No se pudo cargar la tabla')
         })
         .finally(() => {
@@ -565,60 +637,69 @@ export default function Herramientas() {
   }, [search, refreshKey])
 
   const kpis = useMemo(() => {
-    const total = items.length
-    const disponibles = items.filter((x) => x.estado === 'DISPONIBLE').length
-    const asignadas = items.filter((x) => x.estado === 'ASIGNADA').length
-    return { total, disponibles, asignadas }
+    const tipos = items.length
+    const disponibles = items.reduce((sum, x) => sum + Number(x.cantidad_disponible ?? 0), 0)
+    const asignadas = items.reduce((sum, x) => sum + Number(x.cantidad_asignada ?? 0), 0)
+    return { tipos, disponibles, asignadas }
   }, [items])
 
-  async function onDevolver(x) {
+  async function onDevolver(asignacion) {
     setError('')
     try {
-      await fetchApi(`/herramientas/${x.id}/devolver`, { method: 'POST', body: {} })
+      await fetchApi(`/herramientas/asignaciones/${asignacion.id_asignacion}/devolver`, { method: 'POST', body: {} })
       setRefreshKey((k) => k + 1)
     } catch (e) {
       setError(e?.message || 'No se pudo devolver la herramienta')
     }
   }
 
-  const accionColumn = useMemo(
-    () => ({
-      key: 'accion',
-      label: 'Acción',
-      filterable: false,
-      render: (x) => (
-        <div className="actions inline">
-          <button type="button" className="btn icon" onClick={() => setEditTarget(x)}>
-            Editar
-          </button>
-          <button type="button" className="btn icon qr" onClick={() => setQrTarget(x)}>
-            QR
-          </button>
-          {x.estado === 'DISPONIBLE' ? (
-            <button type="button" className="btn icon" onClick={() => setAsignarTarget(x)}>
-              Asignar
-            </button>
-          ) : x.estado === 'ASIGNADA' ? (
-            <button type="button" className="btn icon" onClick={() => onDevolver(x)}>
-              Devolver
-            </button>
-          ) : null}
-        </div>
-      ),
-    }),
-    [],
-  )
-
   const tallerColumns = useMemo(
     () => [
       { key: 'codigo', label: 'Código', render: (x) => <span className="mono">{x.codigo}</span> },
       { key: 'nombre', label: 'Nombre' },
       { key: 'tipo', label: 'Tipo' },
+      {
+        key: 'cantidad_total',
+        label: 'Total',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+      },
+      {
+        key: 'cantidad_disponible',
+        label: 'Disponible',
+        type: 'number',
+        align: 'right',
+        className: 'num',
+      },
       { key: 'estado', label: 'Estado', type: 'enum', render: (x) => <span className="pill">{x.estado}</span> },
       { key: 'ubicacion', label: 'Ubicación' },
-      accionColumn,
+      { key: 'asignado_a', label: 'Con quién', value: (x) => x.asignado_a || '-' },
+      {
+        key: 'accion',
+        label: 'Acción',
+        filterable: false,
+        render: (x) => (
+          <div className="actions inline">
+            <button type="button" className="btn icon" onClick={() => setEditTarget(x)}>
+              Editar
+            </button>
+            <button type="button" className="btn icon qr" onClick={() => setQrTarget(x)}>
+              QR
+            </button>
+            <button
+              type="button"
+              className="btn icon"
+              onClick={() => setAsignarTarget(x)}
+              disabled={Number(x.cantidad_disponible ?? 0) <= 0}
+            >
+              Asignar
+            </button>
+          </div>
+        ),
+      },
     ],
-    [accionColumn],
+    [],
   )
 
   const colaboradorColumns = useMemo(
@@ -626,25 +707,32 @@ export default function Herramientas() {
       { key: 'codigo', label: 'Código', render: (x) => <span className="mono">{x.codigo}</span> },
       { key: 'nombre', label: 'Nombre' },
       { key: 'tipo', label: 'Tipo' },
+      { key: 'cantidad', label: 'Cantidad', type: 'number', align: 'right', className: 'num' },
       { key: 'ubicacion', label: 'Ubicación' },
-      accionColumn,
+      {
+        key: 'accion',
+        label: 'Acción',
+        filterable: false,
+        render: (x) => (
+          <button type="button" className="btn icon" onClick={() => onDevolver(x)}>
+            Devolver
+          </button>
+        ),
+      },
     ],
-    [accionColumn],
+    [],
   )
-
-  const tallerItems = useMemo(() => items.filter((x) => x.estado !== 'ASIGNADA'), [items])
 
   const colaboradorGroups = useMemo(() => {
     const map = new Map()
-    for (const x of items) {
-      if (x.estado !== 'ASIGNADA' || !x.asignado_a) continue
-      if (!map.has(x.asignado_a)) map.set(x.asignado_a, [])
-      map.get(x.asignado_a).push(x)
+    for (const x of asignaciones) {
+      if (!map.has(x.colaborador)) map.set(x.colaborador, [])
+      map.get(x.colaborador).push(x)
     }
     return Array.from(map.entries())
       .map(([nombre, herramientas]) => ({ nombre, herramientas }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-  }, [items])
+  }, [asignaciones])
 
   return (
     <section className="inv-page">
@@ -658,9 +746,9 @@ export default function Herramientas() {
       {error ? <div className="form-error">{error}</div> : null}
 
       <div className="stats">
-        <StatCard label="Unidades registradas" value={isLoadingItems ? '-' : kpis.total} />
-        <StatCard label="Disponibles" value={isLoadingItems ? '-' : kpis.disponibles} />
-        <StatCard label="Asignadas" value={isLoadingItems ? '-' : kpis.asignadas} />
+        <StatCard label="Tipos registrados" value={isLoadingItems ? '-' : kpis.tipos} />
+        <StatCard label="Unidades disponibles" value={isLoadingItems ? '-' : kpis.disponibles} />
+        <StatCard label="Unidades asignadas" value={isLoadingItems ? '-' : kpis.asignadas} />
       </div>
 
       <div className="segmented" role="tablist" aria-label="Vista">
@@ -699,9 +787,9 @@ export default function Herramientas() {
 
           <FilterableTable
             columns={tallerColumns}
-            rows={tallerItems}
+            rows={items}
             isLoading={isLoadingItems}
-            emptyMessage="No hay herramientas disponibles en el taller general."
+            emptyMessage="No hay herramientas registradas."
           />
         </div>
       ) : (
@@ -736,6 +824,7 @@ export default function Herramientas() {
                     rows={group.herramientas}
                     isLoading={false}
                     emptyMessage="Sin herramientas."
+                    rowKey={(x) => x.id_asignacion}
                   />
                 </div>
               ))}

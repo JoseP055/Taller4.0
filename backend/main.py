@@ -591,10 +591,12 @@ class HerramientaUnidadPayload(BaseModel):
   codigo_herramienta: str = Field(..., min_length=1, max_length=50)
   id_ubicacion: int | None = Field(default=None, ge=1)
   observaciones: str | None = Field(default=None, max_length=255)
+  cantidad_total: float = Field(default=1, gt=0)
 
 
 class HerramientaAsignarPayload(BaseModel):
   id_colaborador: int = Field(..., ge=1)
+  cantidad: float = Field(default=1, gt=0)
   observaciones: str | None = Field(default=None, max_length=255)
 
 
@@ -607,6 +609,7 @@ class HerramientaUpdatePayload(BaseModel):
   descripcion: str | None = Field(default=None, max_length=255)
   id_ubicacion: int | None = Field(default=None, ge=1)
   observaciones: str | None = Field(default=None, max_length=255)
+  cantidad_total: float | None = Field(default=None, gt=0)
 
 
 @app.get('/herramientas/meta')
@@ -681,9 +684,17 @@ def crear_herramienta_unidad(payload: HerramientaUnidadPayload, authorization: s
       'codigo_herramienta': payload.codigo_herramienta,
       'id_ubicacion': payload.id_ubicacion,
       'observaciones': payload.observaciones,
+      'cantidad_total': payload.cantidad_total,
     },
     authorization=authorization,
   )
+
+
+@app.get('/herramientas/asignaciones')
+def herramientas_asignaciones(search: str = Query('', max_length=100), authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  return _supabase_rpc('herr_asignaciones_activas', {'search': search}, authorization=authorization)
 
 
 @app.post('/herramientas/{id_herramienta}/asignar')
@@ -695,19 +706,20 @@ def asignar_herramienta(id_herramienta: int, payload: HerramientaAsignarPayload,
     {
       'id_herramienta': id_herramienta,
       'id_colaborador': payload.id_colaborador,
+      'cantidad': payload.cantidad,
       'observaciones': payload.observaciones,
     },
     authorization=authorization,
   )
 
 
-@app.post('/herramientas/{id_herramienta}/devolver')
-def devolver_herramienta(id_herramienta: int, payload: HerramientaDevolverPayload, authorization: str | None = Header(default=None)):
+@app.post('/herramientas/asignaciones/{id_asignacion}/devolver')
+def devolver_herramienta(id_asignacion: int, payload: HerramientaDevolverPayload, authorization: str | None = Header(default=None)):
   ctx = _require_app_access(authorization)
   _require_not_zebra(ctx)
   return _supabase_rpc(
     'herr_devolver',
-    {'id_herramienta': id_herramienta, 'observaciones': payload.observaciones},
+    {'id_asignacion': id_asignacion, 'observaciones': payload.observaciones},
     authorization=authorization,
   )
 
@@ -724,6 +736,7 @@ def editar_herramienta(id_herramienta: int, payload: HerramientaUpdatePayload, a
       'descripcion': payload.descripcion,
       'id_ubicacion': payload.id_ubicacion,
       'observaciones': payload.observaciones,
+      'cantidad_total': payload.cantidad_total,
     },
     authorization=authorization,
   )
