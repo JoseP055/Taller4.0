@@ -594,6 +594,17 @@ class HerramientaUnidadPayload(BaseModel):
   cantidad_total: float = Field(default=1, gt=0)
 
 
+class HerramientaAltaRapidaPayload(BaseModel):
+  id_subcategoria: int = Field(..., ge=1)
+  nombre_base: str = Field(..., min_length=1, max_length=150)
+  descripcion: str | None = Field(default=None, max_length=255)
+  unidad_medida: str = Field(default='UND', min_length=1, max_length=20)
+  codigo_sap: int | None = Field(default=None, ge=1)
+  id_ubicacion: int | None = Field(default=None, ge=1)
+  cantidad_total: float = Field(default=1, gt=0)
+  observaciones: str | None = Field(default=None, max_length=255)
+
+
 class HerramientaAsignarPayload(BaseModel):
   id_colaborador: int = Field(..., ge=1)
   cantidad: float = Field(default=1, gt=0)
@@ -689,6 +700,28 @@ def crear_herramienta_unidad(payload: HerramientaUnidadPayload, authorization: s
     },
     authorization=authorization,
   )
+
+
+@app.post('/herramientas/alta-rapida')
+def crear_herramienta_alta_rapida(payload: HerramientaAltaRapidaPayload, authorization: str | None = Header(default=None)):
+  ctx = _require_app_access(authorization)
+  _require_not_zebra(ctx)
+  res = _supabase_rpc(
+    'herr_create_herramienta',
+    {
+      'id_subcategoria': payload.id_subcategoria,
+      'nombre_base': payload.nombre_base,
+      'descripcion': payload.descripcion,
+      'unidad_medida': payload.unidad_medida,
+      'codigo_sap': payload.codigo_sap,
+      'id_ubicacion': payload.id_ubicacion,
+      'cantidad_total': payload.cantidad_total,
+      'observaciones': payload.observaciones,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('herr:meta')
+  return res
 
 
 @app.get('/herramientas/asignaciones')
