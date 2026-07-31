@@ -248,7 +248,7 @@ def inventory_items(
   authorization: str | None = Header(default=None),
 ):
   ctx = _require_app_access(authorization)
-  if (ctx.get('role') or 'user') == 'zebra' and kind not in ('subensambles', 'productos-terminados'):
+  if (ctx.get('role') or 'user') == 'zebra' and kind not in ('subensambles', 'productos-terminados', 'materias-primas'):
     raise HTTPException(status_code=403, detail='No autorizado')
   return _supabase_rpc(
     'inv_items',
@@ -321,6 +321,12 @@ class FabricacionPayload(BaseModel):
   observaciones: str | None = Field(default=None, max_length=255)
 
 class CreacionSubensamblePayload(BaseModel):
+  id_articulo: int = Field(..., ge=1)
+  cantidad: float = Field(..., gt=0)
+  referencia: str | None = Field(default=None, max_length=100)
+  observaciones: str | None = Field(default=None, max_length=255)
+
+class IngresoMateriaPrimaPayload(BaseModel):
   id_articulo: int = Field(..., ge=1)
   cantidad: float = Field(..., gt=0)
   referencia: str | None = Field(default=None, max_length=100)
@@ -480,6 +486,23 @@ def crear_stock_subensamble(payload: CreacionSubensamblePayload, authorization: 
     authorization=authorization,
   )
   _cache_invalidate_prefix('summary:subensambles')
+  return res
+
+@app.post('/logistica/ingreso-materia-prima')
+def crear_ingreso_materia_prima(payload: IngresoMateriaPrimaPayload, authorization: str | None = Header(default=None)):
+  _require_app_access(authorization)
+  res = _supabase_rpc(
+    'inv_add_stock_materia_prima',
+    {
+      'id_articulo': payload.id_articulo,
+      'cantidad': payload.cantidad,
+      'referencia': payload.referencia or 'INGRESO_MATERIA_PRIMA',
+      'observaciones': payload.observaciones,
+      'id_usuario': None,
+    },
+    authorization=authorization,
+  )
+  _cache_invalidate_prefix('summary:materias-primas')
   return res
 
 @app.get('/logistica/recetas')

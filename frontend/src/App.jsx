@@ -5,6 +5,7 @@ import { useAuth } from './auth/AuthContext.jsx'
 import AppLayout from './layout/AppLayout.jsx'
 import Login from './pages/Login.jsx'
 import CreacionFabricacion from './pages/CreacionFabricacion.jsx'
+import IngresoMateriasPrimas from './pages/IngresoMateriasPrimas.jsx'
 import Configuracion from './pages/Configuracion.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Home from './pages/Home.jsx'
@@ -134,6 +135,10 @@ function App() {
           <Route
             path="logistica/creacion-fabricacion"
             element={<CreacionFabricacion />}
+          />
+          <Route
+            path="logistica/ingreso-materias-primas"
+            element={<IngresoMateriasPrimas />}
           />
           <Route
             path="logistica/movimientos"

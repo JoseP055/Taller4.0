@@ -59,6 +59,17 @@ export function IconPackageCheck(props) {
   )
 }
 
+export function IconPackageDown(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 8.5 12 4l9 4.5-9 4.5-9-4.5Z" />
+      <path d="M3 8.5V17l9 4.5 9-4.5V8.5" />
+      <path d="M12 9v7" />
+      <path d="M9 13.5 12 16.5 15 13.5" />
+    </svg>
+  )
+}
+
 export function IconRoll(props) {
   return (
     <svg {...base} {...props}>

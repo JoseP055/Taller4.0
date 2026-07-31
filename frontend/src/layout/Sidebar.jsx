@@ -13,6 +13,7 @@ import {
   IconCog,
   IconUsers,
   IconFactory,
+  IconPackageDown,
   IconSwap,
   IconSliders,
   IconLogout,
@@ -113,6 +114,12 @@ export default function Sidebar({ isOpen = false, onClose = () => {}, collapsed 
                 to="/app/logistica/creacion-fabricacion"
                 icon={<IconFactory />}
                 label="Creación/Fabricación"
+                onClick={onNav}
+              />
+              <NavItem
+                to="/app/logistica/ingreso-materias-primas"
+                icon={<IconPackageDown />}
+                label="Ingreso materias primas"
                 onClick={onNav}
               />
               <NavItem to="/app/logistica/movimientos" icon={<IconSwap />} label="Movimientos" onClick={onNav} />
