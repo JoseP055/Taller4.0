@@ -639,7 +639,18 @@ export default function CreacionFabricacion() {
               </div>
               <div className="kv-row">
                 <div className="kv-k">Estado</div>
-                <div className="kv-v">{selectedReceta ? 'Lista para fabricar' : 'Selecciona una receta'}</div>
+                <div
+                  className="kv-v"
+                  style={selectedReceta && recetaTieneFaltantes ? { color: 'var(--danger, #c0392b)' } : undefined}
+                >
+                  {!selectedReceta
+                    ? 'Selecciona una receta'
+                    : recetaQty === null
+                    ? 'Ingresa una cantidad'
+                    : recetaTieneFaltantes
+                    ? 'Insumos insuficientes'
+                    : 'Lista para fabricar'}
+                </div>
               </div>
             </div>
           </div>
