@@ -362,6 +362,7 @@ function InventoryTable({
         rows={items}
         isLoading={isLoading}
         emptyMessage="No hay resultados para el filtro actual."
+        pageSize={15}
       />
     </div>
   )
